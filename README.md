@@ -4,6 +4,8 @@ Git worktrees are powerful but clunky to manage — creating, switching, and cle
 
 One command to create a worktree. One command to remove it — with a clear safety summary showing merge status, dirty files, and unpushed commits so you never lose work by accident.
 
+![lwt demo](assets/demo.gif)
+
 ## Install
 
 Requires `zsh`, `git`, and `fzf`.
@@ -23,7 +25,7 @@ lwt doctor
 ## Usage
 
 ```bash
-lwt add [branch] [-e] [-claude|-codex|-gemini "prompt"]
+lwt add [branch] [-s] [-e] [-claude|-codex|-gemini "prompt"]
 lwt switch [query] [-e]
 lwt list
 lwt remove [query]
@@ -38,6 +40,7 @@ Examples:
 ```bash
 lwt add                          # auto-named branch (e.g. swift-reef, calm-jade)
 lwt add feat-onboarding          # create a worktree with a named branch
+lwt add feat-onboarding -s       # same, and install dependencies
 lwt add feat-onboarding -e       # same, but open in your editor
 lwt switch auth -e               # fuzzy-find and switch to a worktree
 lwt list                         # see all worktrees with live status
@@ -69,6 +72,18 @@ lwt add feat-ui -gemini "refactor profile page layout"
 ```
 
 The worktree is created, your shell `cd`s into it, and the agent starts working. Each agent gets its own isolated worktree so it can't interfere with your main checkout.
+
+## Dependency Setup
+
+New worktrees don't share `node_modules` with your main checkout. Pass `-s`/`--setup` to auto-install dependencies after creating a worktree:
+
+```bash
+lwt add feat-api -s              # create worktree + install deps
+```
+
+`lwt` detects your package manager from the lockfile — pnpm, bun, yarn, or npm.
+
+When using an agent flag (`-claude`, `-codex`, `-gemini`), dependencies are always installed automatically since agents need a working environment.
 
 ## Worktree Layout
 

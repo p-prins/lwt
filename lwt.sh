@@ -455,6 +455,7 @@ lwt::ui::help_add() {
 Usage: lwt add [branch] [options]
 
 Options:
+  -s, --setup            Install dependencies after creating the worktree
   -e, --editor           Open the worktree in your editor
   --editor-cmd "cmd"     Override editor command for this run
   -claude "prompt"       Launch Claude after setup
@@ -465,6 +466,7 @@ Options:
 Notes:
   - If branch is omitted, lwt generates a random branch name.
   - New branches are created from the resolved default branch.
+  - When an agent flag is used, dependencies are always installed.
 HELP
 }
 
@@ -606,6 +608,7 @@ lwt::cmd::add() {
   local agent=""
   local prompt=""
   local open_editor=false
+  local run_setup=false
   local editor_override=""
 
   while (( $# > 0 )); do
@@ -613,6 +616,9 @@ lwt::cmd::add() {
       -h|--help)
         lwt::ui::help_add
         return 0
+        ;;
+      -s|--setup)
+        run_setup=true
         ;;
       -e|--editor)
         open_editor=true
@@ -709,7 +715,10 @@ lwt::cmd::add() {
   lwt::utils::copy_env_files "$repo_root" "$target"
 
   cd "$target" || return 1
-  lwt::utils::install_dependencies
+
+  if $run_setup || [[ -n "$agent" ]]; then
+    lwt::utils::install_dependencies
+  fi
 
   if $open_editor; then
     lwt::editor::open "$target" "$editor_override"
