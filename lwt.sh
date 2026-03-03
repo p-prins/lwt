@@ -81,7 +81,19 @@ lwt::git::resolve_default_branch() {
   fi
 }
 
-lwt::git::fetch_all() {
+lwt::git::fetch_if_stale() {
+  local git_dir threshold_sec="${1:-60}"
+  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || return 0
+
+  local fetch_head="$git_dir/FETCH_HEAD"
+  if [[ -f "$fetch_head" ]]; then
+    local now last_fetch age
+    now=$(date +%s)
+    last_fetch=$(stat -f %m "$fetch_head" 2>/dev/null) || last_fetch=0
+    age=$(( now - last_fetch ))
+    (( age < threshold_sec )) && return 0
+  fi
+
   git fetch --all --quiet 2>/dev/null
 }
 
@@ -225,7 +237,7 @@ lwt::worktree::display_rows() {
   local record wt_path branch
   local idx=1
 
-  lwt::git::fetch_all
+  lwt::git::fetch_if_stale
   while IFS= read -r record; do
     records+=("$record")
   done < <(lwt::worktree::records)
@@ -671,7 +683,7 @@ lwt::cmd::add() {
   fi
 
   mkdir -p "$base"
-  git fetch origin --quiet 2>/dev/null
+  lwt::git::fetch_if_stale
 
   local start_ref="$LWT_DEFAULT_BASE_REF"
   git rev-parse --verify "$start_ref" >/dev/null 2>&1 || start_ref="HEAD"
@@ -852,7 +864,7 @@ lwt::cmd::clean() {
   done
 
   lwt::status::warn_gh_limitations
-  lwt::git::fetch_all
+  lwt::git::fetch_if_stale
 
   local main_wt
   main_wt=$(lwt::worktree::main_path) || return 1
