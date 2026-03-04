@@ -25,29 +25,30 @@ lwt doctor
 ## Usage
 
 ```bash
-lwt add [branch] [-s] [-e] [-claude|-codex|-gemini "prompt"]
-lwt switch [query] [-e]
-lwt list
-lwt remove [query]
-lwt clean [-n]
-lwt rename <new-name>
+lwt add (a)      [branch] [-s] [-e] [-yolo] [-claude|-codex|-gemini "prompt"]
+lwt switch (s)   [query] [-e]
+lwt list (ls)
+lwt remove (rm)  [query]
+lwt clean        [-n]
+lwt rename (rn)  <new-name>
 lwt doctor
-lwt help [command]
+lwt help         [command]
 ```
 
 Examples:
 
 ```bash
-lwt add                          # auto-named branch (e.g. swift-reef, calm-jade)
-lwt add feat-onboarding          # create a worktree with a named branch
-lwt add feat-onboarding -s       # same, and install dependencies
-lwt add feat-onboarding -e       # same, but open in your editor
-lwt switch auth -e               # fuzzy-find and switch to a worktree
-lwt list                         # see all worktrees with live status
-lwt remove                       # pick a worktree to safely remove
-lwt clean                        # remove all merged worktrees at once
-lwt clean -n                     # dry run — see what would be removed
-lwt rename new-api-name          # rename current worktree + branch
+lwt a feat-onboarding                               # create a worktree
+lwt a feat-onboarding -s -e                          # create, install deps, open editor
+lwt a feat-api -claude "add webhook retries"         # create and launch an agent
+lwt a feat-api -yolo -codex "refactor auth module"   # agent with full auto-approve
+lwt a                                                # auto-named branch (e.g. swift-reef)
+lwt s auth -e                                        # fuzzy-find and switch to a worktree
+lwt ls                                               # list all worktrees with status
+lwt rm                                               # pick and remove a worktree
+lwt clean -n                                         # preview merged worktrees to remove
+lwt clean                                            # remove all merged worktrees
+lwt rn new-api-name                                  # rename worktree + branch
 ```
 
 ## Remote-Aware Status
@@ -66,19 +67,25 @@ This matters most during `remove` — you'll see exactly what you'd lose before 
 Spin up a worktree and immediately hand it off to an AI coding agent — one command:
 
 ```bash
-lwt add feat-api -claude "add retries to webhook sender"
-lwt add feat-api -codex "implement OAuth callback handling"
-lwt add feat-ui -gemini "refactor profile page layout"
+lwt a feat-api -claude "add retries to webhook sender"
+lwt a feat-api -codex "implement OAuth callback handling"
+lwt a feat-ui -gemini "refactor profile page layout"
 ```
 
 The worktree is created, your shell `cd`s into it, and the agent starts working. Each agent gets its own isolated worktree so it can't interfere with your main checkout.
+
+By default, agents launch in interactive mode. Pass `-yolo` to auto-approve all agent actions for that run, or set it globally:
+
+```bash
+git config --global lwt.agent-mode yolo
+```
 
 ## Dependency Setup
 
 New worktrees don't share `node_modules` with your main checkout. Pass `-s`/`--setup` to auto-install dependencies after creating a worktree:
 
 ```bash
-lwt add feat-api -s              # create worktree + install deps
+lwt a feat-api -s                # create worktree + install deps
 ```
 
 `lwt` detects your package manager from the lockfile — pnpm, bun, yarn, or npm.
@@ -131,7 +138,7 @@ Resolution order:
 Recommended setup:
 
 ```bash
-git config --global lwt.editor "zed"
+git config --global lwt.editor zed
 ```
 
 ## Requirements
