@@ -440,7 +440,7 @@ lwt::agent::launch() {
       ;;
     codex)
       if [[ "$yolo" == "true" ]]; then
-        codex --full-auto "$prompt"
+        codex --yolo "$prompt"
       else
         codex "$prompt"
       fi
