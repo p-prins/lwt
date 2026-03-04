@@ -20,6 +20,7 @@
 _lwt_red=$'\033[1;31m'
 _lwt_green=$'\033[32m'
 _lwt_yellow=$'\033[33m'
+_lwt_orange=$'\033[38;5;208m'
 _lwt_dim=$'\033[2m'
 _lwt_bold=$'\033[1m'
 _lwt_reset=$'\033[0m'
@@ -34,15 +35,15 @@ lwt::deps::has() {
 }
 
 lwt::ui::error() {
-  echo "${_lwt_red}Error:${_lwt_reset} $*" >&2
+  echo "${_lwt_red}✗ $*${_lwt_reset}" >&2
 }
 
 lwt::ui::warn() {
-  echo "${_lwt_yellow}Warning:${_lwt_reset} $*" >&2
+  echo "${_lwt_yellow}⚠ $*${_lwt_reset}" >&2
 }
 
 lwt::ui::hint() {
-  echo "${_lwt_dim}$*${_lwt_reset}" >&2
+  echo "  ${_lwt_dim}$*${_lwt_reset}" >&2
 }
 
 lwt::ui::header() {
@@ -50,11 +51,11 @@ lwt::ui::header() {
 }
 
 lwt::ui::success() {
-  echo "${_lwt_green}$*${_lwt_reset}"
+  echo "${_lwt_green}✓ $*${_lwt_reset}"
 }
 
 lwt::ui::step() {
-  echo "${_lwt_dim}> $*${_lwt_reset}"
+  echo "${_lwt_dim}› $*${_lwt_reset}"
 }
 
 lwt::git::ensure_repo() {
@@ -235,6 +236,19 @@ lwt::status::for_worktree() {
     ((unpushed > 0)) && printf ' %s⚠ %d unpushed%s' "$_lwt_yellow" "$unpushed" "$_lwt_reset"
     ((behind > 0)) && printf ' %s↓ %d behind%s' "$_lwt_dim" "$behind" "$_lwt_reset"
   fi
+
+  # show open PR number if pre-fetched data is available (via LWT_OPEN_PRS_FILE)
+  # file format: branch_name\tPR #N\turl (one per line)
+  if [[ -n "$LWT_OPEN_PRS_FILE" && -s "$LWT_OPEN_PRS_FILE" ]]; then
+    local _pr_label _pr_url _pr_line
+    _pr_line=$(awk -F'\t' -v b="$branch" '$1 == b { print $2 "\t" $3; exit }' "$LWT_OPEN_PRS_FILE" 2>/dev/null)
+    if [[ -n "$_pr_line" ]]; then
+      _pr_label="${_pr_line%%$'\t'*}"
+      _pr_url="${_pr_line#*$'\t'}"
+      # OSC 8 hyperlink: clickable in supported terminals (iTerm2, Ghostty, etc.)
+      printf ' %s\e]8;;%s\e\\%s\e]8;;\e\\%s' "$_lwt_dim" "$_pr_url" "$_pr_label" "$_lwt_reset"
+    fi
+  fi
 }
 
 lwt::worktree::display_rows() {
@@ -254,6 +268,16 @@ lwt::worktree::display_rows() {
   current_dir=$(git rev-parse --show-toplevel 2>/dev/null)
   main_dir="${records[1]%%$'\t'*}"
   tmpdir=$(mktemp -d)
+
+  # batch-fetch all open PR head branches in a single API call (used by for_worktree)
+  # runs before parallel subshells so the file is ready when they read it
+  export LWT_OPEN_PRS_FILE="$tmpdir/_open_prs"
+  touch "$LWT_OPEN_PRS_FILE"
+  lwt::status::init_gh_mode
+  if [[ "$LWT_GH_MODE" == "ok" ]]; then
+    gh pr list --state open --limit 100 --json headRefName,number,url -q '.[] | "\(.headRefName)\tPR #\(.number)\t\(.url)"' \
+      > "$LWT_OPEN_PRS_FILE" 2>/dev/null
+  fi
 
   for record in "${records[@]}"; do
     wt_path="${record%%$'\t'*}"
@@ -282,6 +306,7 @@ lwt::worktree::display_rows() {
   done
 
   rm -rf "$tmpdir"
+  unset LWT_OPEN_PRS_FILE
 }
 
 lwt::editor::resolve() {
@@ -553,7 +578,8 @@ lwt::ui::help_rename() {
   echo
   lwt::ui::header "Notes"
   echo "  ${_lwt_dim}The main repository worktree cannot be renamed.${_lwt_reset}"
-  echo "  ${_lwt_dim}If a remote branch exists, you'll be prompted to rename it too.${_lwt_reset}"
+  echo "  ${_lwt_dim}If a remote branch exists, it will be renamed automatically.${_lwt_reset}"
+  echo "  ${_lwt_dim}Open PRs are recreated on the new branch when gh is available.${_lwt_reset}"
   echo "  ${_lwt_dim}If an AI agent is running in the worktree, it will need to be restarted.${_lwt_reset}"
 }
 
@@ -798,6 +824,11 @@ lwt::cmd::remove() {
   current_wt=$(git rev-parse --show-toplevel 2>/dev/null)
 
   if [[ "$current_wt" != "$main_wt" ]]; then
+    # if a query was passed while inside a worktree, the user may have meant `lwt rn`
+    if [[ -n "$query" ]]; then
+      lwt::ui::hint "Did you mean ${_lwt_bold}lwt rn $query${_lwt_reset}${_lwt_dim}? (rm ignores arguments inside a worktree)"
+      echo
+    fi
     worktree="$current_wt"
   else
     if ! lwt::deps::has fzf; then
@@ -1078,6 +1109,11 @@ lwt::cmd::rename() {
     return 1
   fi
 
+  if [[ "$old_branch" == "$LWT_DEFAULT_BRANCH" || "$old_branch" == "main" || "$old_branch" == "master" ]]; then
+    lwt::ui::error "Cannot rename the default branch ($old_branch)."
+    return 1
+  fi
+
   local project base new_path
   project=$(basename "$main_wt")
   base="$main_wt/../.worktrees/$project"
@@ -1093,14 +1129,46 @@ lwt::cmd::rename() {
     has_remote=true
   fi
 
+  # check for open PRs on this branch (relevant when renaming remote)
+  local open_pr_count=0
+  local has_gh=false
+  if $has_remote; then
+    lwt::status::init_gh_mode
+    if [[ "$LWT_GH_MODE" == "ok" ]]; then
+      has_gh=true
+      open_pr_count=$(gh pr list --head "$old_branch" --state open --json number -q 'length' 2>/dev/null)
+      [[ -z "$open_pr_count" ]] && open_pr_count=0
+    fi
+  fi
+
+  # capture open PR details before any renaming (deletion auto-closes them)
+  # GitHub has no API to change a PR's head branch, so we recreate PRs on the new branch
+  local -a old_pr_nums=()
+  local -A old_pr_urls=()
+  if $has_gh && ((open_pr_count > 0)); then
+    local n u
+    while IFS=$'\t' read -r n u; do
+      old_pr_nums+=("$n")
+      old_pr_urls[$n]="$u"
+    done < <(gh pr list --head "$old_branch" --state open --json number,url -q '.[] | "\(.number)\t\(.url)"' 2>/dev/null)
+  fi
+
   lwt::ui::header "Rename worktree"
-  echo "  ${_lwt_bold}$old_branch${_lwt_reset} → ${_lwt_bold}$new_name${_lwt_reset}"
-  echo "  ${_lwt_dim}$worktree${_lwt_reset}"
-  $has_remote && echo "  Remote branch ${_lwt_bold}origin/$old_branch${_lwt_reset} exists and will be updated."
   echo
-  lwt::ui::warn "If an AI agent is running in this worktree, it will lose its"
-  lwt::ui::warn "working directory and may lose conversation history. You'll need"
-  lwt::ui::warn "to restart the agent after renaming."
+  echo "  ${_lwt_orange}${_lwt_bold}$old_branch${_lwt_reset} → ${_lwt_green}${_lwt_bold}$new_name${_lwt_reset}"
+  echo "  ${_lwt_dim}$worktree${_lwt_reset}"
+  if $has_remote; then
+    echo "  Remote branch ${_lwt_bold}origin/$old_branch${_lwt_reset} will be renamed."
+  fi
+  echo
+  lwt::ui::warn "Running AI agents will need to be restarted after renaming."
+  if ((${#old_pr_nums[@]} > 0)); then
+    local _n
+    for _n in "${old_pr_nums[@]}"; do
+      printf '  %s\e]8;;%s\e\\PR #%s\e]8;;\e\\ will be closed — you can recreate it on the new branch.%s\n' \
+        "$_lwt_dim" "${old_pr_urls[$_n]}" "$_n" "$_lwt_reset"
+    done
+  fi
 
   echo
   if ! read -rq "?Rename? [y/N] "; then
@@ -1127,15 +1195,47 @@ lwt::cmd::rename() {
 
   # handle remote branch
   if $has_remote; then
-    if read -rq "?Rename remote branch (push new, delete old)? [y/N] "; then
+    git -C "$new_path" push origin "$new_name" >/dev/null 2>&1 \
+      && git push origin --delete "$old_branch" >/dev/null 2>&1 \
+      && git -C "$new_path" branch --set-upstream-to="origin/$new_name" "$new_name" >/dev/null 2>&1 \
+      && lwt::ui::step "Renamed remote branch origin/$old_branch -> origin/$new_name"
+
+    # offer to recreate captured PRs on the new branch (closed PRs are still readable)
+    # default yes, but user may decline to preserve comments/reviews on the old PR
+    if ((${#old_pr_nums[@]} > 0)); then
+      local _n
+      for _n in "${old_pr_nums[@]}"; do
+        # OSC 8 clickable link for the PR
+        printf '  %s\e]8;;%s\e\\PR #%s\e]8;;\e\\%s was closed by the branch deletion.\n' \
+          "$_lwt_dim" "${old_pr_urls[$_n]}" "$_n" "$_lwt_reset"
+      done
+      local _recreate_reply
+      read -rk 1 "_recreate_reply?Recreate on new branch? [Y/n] "
       echo
-      git -C "$new_path" push origin "$new_name" 2>/dev/null \
-        && git push origin --delete "$old_branch" 2>/dev/null \
-        && git -C "$new_path" branch --set-upstream-to="origin/$new_name" "$new_name" 2>/dev/null \
-        && lwt::ui::step "Renamed remote branch origin/$old_branch -> origin/$new_name"
-    else
-      echo
-      lwt::ui::hint "Remote branch origin/$old_branch was kept. Local branch now tracks nothing."
+      if [[ "$_recreate_reply" != [nN] ]]; then
+        local _pr_num _pr_title _pr_body _pr_base _new_pr_url
+        for _pr_num in "${old_pr_nums[@]}"; do
+          _pr_title=$(gh pr view "$_pr_num" --json title -q '.title' 2>/dev/null)
+          _pr_body=$(gh pr view "$_pr_num" --json body -q '.body' 2>/dev/null)
+          _pr_base=$(gh pr view "$_pr_num" --json baseRefName -q '.baseRefName' 2>/dev/null)
+          _new_pr_url=$(gh pr create \
+            --head "$new_name" \
+            --base "${_pr_base:-$LWT_DEFAULT_BRANCH}" \
+            --title "$_pr_title" \
+            --body "$_pr_body" 2>/dev/null)
+          if [[ -n "$_new_pr_url" ]]; then
+            gh pr comment "$_pr_num" --body "Branch renamed to \`$new_name\`. Continued in $_new_pr_url" >/dev/null 2>&1
+            # extract new PR number from URL (last path segment)
+            local _new_pr_num="${_new_pr_url##*/}"
+            printf '%s› Recreated \e]8;;%s\e\\PR #%s\e]8;;\e\\%s\n' \
+              "$_lwt_dim" "$_new_pr_url" "$_new_pr_num" "$_lwt_reset"
+          else
+            lwt::ui::warn "Failed to recreate PR #$_pr_num on new branch."
+          fi
+        done
+      else
+        lwt::ui::hint "Old PR(s) were closed when the branch was deleted. You can reopen manually."
+      fi
     fi
   fi
 

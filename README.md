@@ -8,7 +8,7 @@ One command to create a worktree. One command to remove it — with a clear safe
 
 ## Install
 
-Requires `zsh`, `git`, and `fzf`.
+Requires `zsh`, `git`, and `fzf`. You'll also want [`gh`](https://cli.github.com/) for full functionality (see [Requirements](#requirements)).
 
 ```bash
 git clone https://github.com/linuz90/lwt.git ~/Code/lwt
@@ -121,7 +121,7 @@ Use `lwt clean -n` to preview what would be removed without deleting anything.
 
 `lwt rename <new-name>` renames a worktree's branch and moves its directory to match — atomically. If called from inside a linked worktree, it renames that one. Otherwise an fzf picker is shown.
 
-If the branch has been pushed, you'll be prompted to rename the remote branch too. If an AI agent is running in the worktree, you'll be warned that it will need to be restarted after the rename.
+If the branch has been pushed, you'll be prompted to rename the remote branch too. When `gh` is available, open PRs are automatically recreated on the new branch (the old PR is closed with a cross-reference). If an AI agent is running in the worktree, you'll be warned that it will need to be restarted after the rename.
 
 ## Editor Integration
 
@@ -145,8 +145,10 @@ git config --global lwt.editor zed
 
 Required: `git`, `fzf`, `zsh`
 
+Strongly recommended:
+- `gh` — used by `list`, `remove`, `clean`, and `rename`. Enables squash-merge detection so merged worktrees are correctly identified, and recreates open PRs when renaming branches. Without `gh`, these features degrade gracefully but you lose visibility and risk orphaned PRs.
+
 Optional:
-- `gh` — enables squash-merge detection in status
 - `claude`, `codex`, `gemini` CLIs — for agent launch
 
 ## License
