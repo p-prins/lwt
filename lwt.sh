@@ -403,6 +403,7 @@ lwt::utils::install_dependencies() {
 lwt::agent::launch() {
   local agent="$1"
   local prompt="$2"
+  local yolo="$3"
   [[ -z "$agent" || -z "$prompt" ]] && return 0
 
   if ! lwt::deps::has "$agent"; then
@@ -410,16 +411,35 @@ lwt::agent::launch() {
     return 0
   fi
 
+  # Resolve yolo mode: flag > git config > default (off)
+  if [[ "$yolo" != "true" ]]; then
+    local configured
+    configured=$(git config --get lwt.agent-mode 2>/dev/null)
+    [[ "$configured" == "yolo" ]] && yolo=true
+  fi
+
   echo "Launching $agent..."
   case "$agent" in
     claude)
-      claude --dangerously-skip-permissions "$prompt"
+      if [[ "$yolo" == "true" ]]; then
+        claude --dangerously-skip-permissions "$prompt"
+      else
+        claude "$prompt"
+      fi
       ;;
     codex)
-      codex --full-auto "$prompt"
+      if [[ "$yolo" == "true" ]]; then
+        codex --full-auto "$prompt"
+      else
+        codex "$prompt"
+      fi
       ;;
     gemini)
-      gemini -y "$prompt"
+      if [[ "$yolo" == "true" ]]; then
+        gemini --yolo "$prompt"
+      else
+        gemini "$prompt"
+      fi
       ;;
   esac
 }
@@ -439,14 +459,18 @@ Commands:
   help         Show command help
 
 Examples:
-  lwt add my-feature
-  lwt add -e my-feature
-  lwt switch feat -e
-  lwt list
-  lwt remove
-  lwt clean
-  lwt rename new-name
-  lwt doctor
+  lwt a my-feature                           Create a new worktree
+  lwt a my-feature -e                        Create and open in editor
+  lwt a my-feature -s                        Create and install dependencies
+  lwt a my-feature -claude "fix..."          Create and launch an agent
+  lwt a my-feature -yolo -claude "fix..."    Launch agent with full auto-approve
+  lwt s                                      Switch worktree with fzf
+  lwt ls                                     List all worktrees
+  lwt rm                                     Pick and remove a worktree
+
+Config:
+  git config lwt.editor code         Editor to open worktrees in (e.g. code for VS Code)
+  git config lwt.agent-mode yolo     Auto-approve all agent actions (use with caution)
 HELP
 }
 
@@ -461,6 +485,7 @@ Options:
   -claude "prompt"       Launch Claude after setup
   -codex "prompt"        Launch Codex after setup
   -gemini "prompt"       Launch Gemini after setup
+  -yolo                  Give the agent full auto-approve permissions
   -h, --help             Show help
 
 Notes:
@@ -609,6 +634,7 @@ lwt::cmd::add() {
   local prompt=""
   local open_editor=false
   local run_setup=false
+  local yolo=false
   local editor_override=""
 
   while (( $# > 0 )); do
@@ -619,6 +645,9 @@ lwt::cmd::add() {
         ;;
       -s|--setup)
         run_setup=true
+        ;;
+      -yolo)
+        yolo=true
         ;;
       -e|--editor)
         open_editor=true
@@ -724,7 +753,7 @@ lwt::cmd::add() {
     lwt::editor::open "$target" "$editor_override"
   fi
 
-  lwt::agent::launch "$agent" "$prompt"
+  lwt::agent::launch "$agent" "$prompt" "$yolo"
 }
 
 lwt::cmd::remove() {
@@ -1151,15 +1180,23 @@ lwt::cmd::doctor() {
   done
 
   echo
-  echo "Editor resolution order"
-  echo "  git config lwt.editor -> LWT_EDITOR -> VISUAL -> EDITOR"
+  echo "Settings"
 
-  if $in_repo; then
-    local configured_editor
-    configured_editor=$(git config --get lwt.editor 2>/dev/null)
-    if [[ -n "$configured_editor" ]]; then
-      echo "  Current git-config editor: $configured_editor"
-    fi
+  local resolved_editor
+  resolved_editor=$(lwt::editor::resolve 2>/dev/null)
+  if [[ -n "$resolved_editor" ]]; then
+    echo "  ${_lwt_green}✓ editor${_lwt_reset} $resolved_editor"
+  else
+    echo "  ${_lwt_dim}- editor not set${_lwt_reset}"
+    echo "    Set with: git config lwt.editor zed"
+  fi
+
+  local agent_mode
+  agent_mode=$(git config --get lwt.agent-mode 2>/dev/null)
+  if [[ -n "$agent_mode" ]]; then
+    echo "  ${_lwt_green}✓ agent-mode${_lwt_reset} $agent_mode"
+  else
+    echo "  ${_lwt_dim}- agent-mode interactive (default)${_lwt_reset}"
   fi
 }
 
