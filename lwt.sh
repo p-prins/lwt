@@ -876,17 +876,29 @@ lwt::cmd::remove() {
     ((behind > 0)) && echo "  ${_lwt_dim}↓ $behind commit(s) behind remote${_lwt_reset}"
   fi
 
-  # detect open PR (used for pre-deletion info and post-deletion cleanup)
-  local _rm_pr_num="" _rm_pr_link=""
+  # detect PR (open → used for post-deletion cleanup; merged → informational link)
+  local _rm_pr_num="" _rm_pr_link="" _rm_pr_state=""
   lwt::status::init_gh_mode
   if [[ "$LWT_GH_MODE" == "ok" && -n "$branch" ]]; then
     local _rm_pr_raw
-    _rm_pr_raw=$(gh pr list --head "$branch" --state open --json number,url -q '.[0] | "PR #\(.number)\t\(.url)"' 2>/dev/null)
+    # check open first (actionable), then merged (informational)
+    _rm_pr_raw=$(gh pr list --head "$branch" --state open --json number,url -q '.[0] // empty | "PR #\(.number)\t\(.url)"' 2>/dev/null)
+    if [[ -n "$_rm_pr_raw" ]]; then
+      _rm_pr_state="open"
+    else
+      _rm_pr_raw=$(gh pr list --head "$branch" --state merged --json number,url -q '.[0] // empty | "PR #\(.number)\t\(.url)"' 2>/dev/null)
+      [[ -n "$_rm_pr_raw" ]] && _rm_pr_state="merged"
+    fi
     if [[ -n "$_rm_pr_raw" ]]; then
       _rm_pr_num="${_rm_pr_raw%%$'\t'*}"
       _rm_pr_link="${_rm_pr_raw#*$'\t'}"
-      printf '  %s\e]8;;%s\e\\%s\e]8;;\e\\ is open on this branch.%s\n' \
-        "$_lwt_dim" "$_rm_pr_link" "$_rm_pr_num" "$_lwt_reset"
+      if [[ "$_rm_pr_state" == "open" ]]; then
+        printf '  %s\e]8;;%s\e\\%s\e]8;;\e\\ is open on this branch.%s\n' \
+          "$_lwt_dim" "$_rm_pr_link" "$_rm_pr_num" "$_lwt_reset"
+      else
+        printf '  %s\e]8;;%s\e\\%s\e]8;;\e\\ was merged.%s\n' \
+          "$_lwt_dim" "$_rm_pr_link" "$_rm_pr_num" "$_lwt_reset"
+      fi
     fi
   fi
 
@@ -934,7 +946,7 @@ lwt::cmd::remove() {
   if [[ -n "$branch" && "$branch" != "$LWT_DEFAULT_BRANCH" && "$branch" != "main" && "$branch" != "master" ]] \
     && git ls-remote --heads origin "$branch" 2>/dev/null | grep -q .; then
     echo
-    if [[ -n "$_rm_pr_num" ]]; then
+    if [[ "$_rm_pr_state" == "open" ]]; then
       # open PR exists — close it and delete remote branch together
       printf '  Remote branch %sorigin/%s%s still exists.\n' "$_lwt_bold" "$branch" "$_lwt_reset"
       printf '  %s\e]8;;%s\e\\%s\e]8;;\e\\%s is still open.\n' \
