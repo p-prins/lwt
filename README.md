@@ -25,31 +25,35 @@ lwt doctor
 ## Usage
 
 ```bash
-lwt add (a)      [branch] [-s] [-e] [-yolo] [-claude|-codex|-gemini "prompt"]
-lwt switch (s)   [query] [-e]
+lwt add (a)        [branch] [-s] [-e] [-yolo] [-claude|-codex|-gemini "prompt"]
+lwt checkout (co)  [query] [-e]
+lwt switch (s)     [query] [-e]
 lwt list (ls)
-lwt remove (rm)  [query]
-lwt clean        [-n]
-lwt rename (rn)  <new-name>
+lwt remove (rm)    [query]
+lwt clean          [-n]
+lwt rename (rn)    <new-name>
 lwt doctor
-lwt help         [command]
+lwt help           [command]
 ```
 
 Examples:
 
-| Command | Description |
-|---------|-------------|
-| `lwt a feat-onboarding` | Create a worktree |
-| `lwt a feat-onboarding -s -e` | Create, install deps, open editor |
-| `lwt a feat-api -claude "add webhook retries"` | Create and launch an agent |
-| `lwt a feat-api -yolo -codex "refactor auth module"` | Agent with full auto-approve |
-| `lwt a` | Auto-named branch (e.g. swift-reef) |
-| `lwt s auth -e` | Fuzzy-find and switch to a worktree |
-| `lwt ls` | List all worktrees with status |
-| `lwt rm` | Pick and remove a worktree |
-| `lwt clean -n` | Preview merged worktrees to remove |
-| `lwt clean` | Remove all merged worktrees |
-| `lwt rn new-api-name` | Rename worktree + branch |
+| Command                                              | Description                                                         |
+| ---------------------------------------------------- | ------------------------------------------------------------------- |
+| `lwt a feat-onboarding`                              | Create a worktree                                                   |
+| `lwt a feat-onboarding -s -e`                        | Create, install deps, open editor                                   |
+| `lwt a feat-api -claude "add webhook retries"`       | Create and launch an agent                                          |
+| `lwt a feat-api -yolo -codex "refactor auth module"` | Agent with full auto-approve                                        |
+| `lwt a`                                              | Auto-named branch (e.g. swift-reef)                                 |
+| `lwt a existing-remote-branch`                       | Prompt to create a worktree from an existing local or remote branch |
+| `lwt co`                                             | Pick an open PR without a worktree and create one                   |
+| `lwt co restream`                                    | Filter open PRs before picking one to spawn                         |
+| `lwt s auth -e`                                      | Fuzzy-find and switch to a worktree                                 |
+| `lwt ls`                                             | List all worktrees with status                                      |
+| `lwt rm`                                             | Pick and remove a worktree                                          |
+| `lwt clean -n`                                       | Preview merged worktrees to remove                                  |
+| `lwt clean`                                          | Remove all merged worktrees                                         |
+| `lwt rn new-api-name`                                | Rename worktree + branch                                            |
 
 ## Remote-Aware Status
 
@@ -146,9 +150,11 @@ git config --global lwt.editor zed
 Required: `git`, `fzf`, `zsh`
 
 Strongly recommended:
+
 - `gh` — used by `list`, `remove`, `clean`, and `rename`. Enables squash-merge detection so merged worktrees are correctly identified, and recreates open PRs when renaming branches. Without `gh`, these features degrade gracefully but you lose visibility and risk orphaned PRs.
 
 Optional:
+
 - `claude`, `codex`, `gemini` CLIs — for agent launch
 
 ## License

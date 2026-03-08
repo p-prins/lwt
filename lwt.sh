@@ -8,6 +8,7 @@
 #
 # Commands:
 #   lwt add [name] [-e] [--editor-cmd "cmd"] [-claude|-codex|-gemini "prompt"]
+#   lwt checkout [query] [-e] [--editor-cmd "cmd"]
 #   lwt switch [query] [-e] [--editor-cmd "cmd"]
 #   lwt list
 #   lwt remove [query]
@@ -29,6 +30,7 @@ typeset -g LWT_DEFAULT_BRANCH=""
 typeset -g LWT_DEFAULT_BASE_REF=""
 typeset -g LWT_GH_MODE=""
 typeset -g LWT_GH_NOTICE_PRINTED=0
+typeset -g LWT_LAST_WORKTREE_PATH=""
 
 lwt::deps::has() {
   command -v "$1" >/dev/null 2>&1
@@ -147,6 +149,99 @@ lwt::worktree::main_path() {
   first=$(lwt::worktree::records | head -n 1)
   [[ -z "$first" ]] && return 1
   printf '%s\n' "${first%%$'\t'*}"
+}
+
+lwt::worktree::path_for_branch() {
+  local target_branch="$1"
+  local record wt_path branch
+
+  [[ -z "$target_branch" ]] && return 1
+
+  while IFS= read -r record; do
+    wt_path="${record%%$'\t'*}"
+    branch="${record#*$'\t'}"
+
+    if [[ "$branch" == "$target_branch" ]]; then
+      printf '%s\n' "$wt_path"
+      return 0
+    fi
+  done < <(lwt::worktree::records)
+
+  return 1
+}
+
+lwt::worktree::create_branch() {
+  local branch="$1"
+  local confirm_existing="${2:-true}"
+  local allow_new="${3:-true}"
+  local repo_root project base target
+  local start_ref git_err
+
+  LWT_LAST_WORKTREE_PATH=""
+  [[ -z "$branch" ]] && return 1
+
+  repo_root=$(lwt::worktree::main_path) || return 1
+  project=$(basename "$repo_root")
+  base="$repo_root/../.worktrees/$project"
+  target="$base/$branch"
+
+  if [[ -e "$target" ]]; then
+    lwt::ui::error "Target path already exists: $target"
+    return 1
+  fi
+
+  mkdir -p "$base"
+  lwt::git::fetch_if_stale
+
+  start_ref="$LWT_DEFAULT_BASE_REF"
+  git rev-parse --verify "$start_ref" >/dev/null 2>&1 || start_ref="HEAD"
+
+  if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
+    if [[ "$confirm_existing" == "true" ]]; then
+      if ! read -rq "?Branch $branch exists locally. Check out into a worktree? [y/N] "; then
+        echo
+        return 1
+      fi
+      echo
+    fi
+
+    git_err=$(git worktree add "$target" "$branch" 2>&1) || {
+      lwt::ui::error "Failed to create worktree."
+      lwt::ui::hint "$git_err"
+      return 1
+    }
+    lwt::ui::step "Checked out existing branch ${_lwt_bold}$branch${_lwt_reset}"
+  elif git show-ref --verify --quiet "refs/remotes/origin/$branch" 2>/dev/null; then
+    if [[ "$confirm_existing" == "true" ]]; then
+      if ! read -rq "?Branch $branch exists on origin. Check out into a worktree? [y/N] "; then
+        echo
+        return 1
+      fi
+      echo
+    fi
+
+    git_err=$(git worktree add --track -b "$branch" "$target" "origin/$branch" 2>&1) || {
+      lwt::ui::error "Failed to create worktree."
+      lwt::ui::hint "$git_err"
+      return 1
+    }
+    lwt::ui::step "Checked out existing branch ${_lwt_bold}$branch${_lwt_reset}${_lwt_dim} from origin"
+  else
+    if [[ "$allow_new" != "true" ]]; then
+      lwt::ui::error "No existing branch matched: $branch"
+      return 1
+    fi
+
+    git_err=$(git worktree add -b "$branch" "$target" "$start_ref" 2>&1) || {
+      lwt::ui::error "Failed to create worktree."
+      lwt::ui::hint "$git_err"
+      return 1
+    }
+    lwt::ui::step "Created branch ${_lwt_bold}$branch${_lwt_reset}${_lwt_dim} from ${LWT_DEFAULT_BASE_REF}"
+  fi
+
+  lwt::utils::copy_env_files "$repo_root" "$target"
+  LWT_LAST_WORKTREE_PATH="$target"
 }
 
 lwt::status::init_gh_mode() {
@@ -485,6 +580,7 @@ lwt::ui::help_main() {
   echo
   lwt::ui::header "Commands"
   echo "  ${_lwt_bold}add, a${_lwt_reset}       ${_lwt_dim}Create or check out a worktree branch${_lwt_reset}"
+  echo "  ${_lwt_bold}checkout, co${_lwt_reset} ${_lwt_dim}Pick an open PR and spawn a worktree${_lwt_reset}"
   echo "  ${_lwt_bold}switch, s${_lwt_reset}    ${_lwt_dim}Switch to a worktree via fzf${_lwt_reset}"
   echo "  ${_lwt_bold}list, ls${_lwt_reset}     ${_lwt_dim}List worktrees with live status${_lwt_reset}"
   echo "  ${_lwt_bold}remove, rm${_lwt_reset}   ${_lwt_dim}Remove a worktree safely${_lwt_reset}"
@@ -499,6 +595,7 @@ lwt::ui::help_main() {
   echo "  lwt a my-feature -s                        ${_lwt_dim}Create and install dependencies${_lwt_reset}"
   echo "  lwt a my-feature -claude \"fix...\"          ${_lwt_dim}Create and launch an agent${_lwt_reset}"
   echo "  lwt a my-feature -yolo -claude \"fix...\"    ${_lwt_dim}Launch agent with full auto-approve${_lwt_reset}"
+  echo "  lwt co                                     ${_lwt_dim}Pick an open PR and create its worktree${_lwt_reset}"
   echo "  lwt s                                      ${_lwt_dim}Switch worktree with fzf${_lwt_reset}"
   echo "  lwt ls                                     ${_lwt_dim}List all worktrees${_lwt_reset}"
   echo "  lwt rm                                     ${_lwt_dim}Pick and remove a worktree${_lwt_reset}"
@@ -535,6 +632,20 @@ lwt::ui::help_switch() {
   echo "  ${_lwt_bold}-e, --editor${_lwt_reset}           ${_lwt_dim}Open selected worktree in your editor${_lwt_reset}"
   echo "  ${_lwt_bold}--editor-cmd \"cmd\"${_lwt_reset}     ${_lwt_dim}Override editor command for this run${_lwt_reset}"
   echo "  ${_lwt_bold}-h, --help${_lwt_reset}             ${_lwt_dim}Show help${_lwt_reset}"
+}
+
+lwt::ui::help_checkout() {
+  echo "${_lwt_bold}Usage:${_lwt_reset} lwt checkout [query] [options]"
+  echo
+  lwt::ui::header "Options"
+  echo "  ${_lwt_bold}-e, --editor${_lwt_reset}           ${_lwt_dim}Open the selected worktree in your editor${_lwt_reset}"
+  echo "  ${_lwt_bold}--editor-cmd \"cmd\"${_lwt_reset}     ${_lwt_dim}Override editor command for this run${_lwt_reset}"
+  echo "  ${_lwt_bold}-h, --help${_lwt_reset}             ${_lwt_dim}Show help${_lwt_reset}"
+  echo
+  lwt::ui::header "Notes"
+  echo "  ${_lwt_dim}Shows only open PRs that do not already have a worktree.${_lwt_reset}"
+  echo "  ${_lwt_dim}Use switch to move to an existing worktree.${_lwt_reset}"
+  echo "  ${_lwt_dim}Use add when you want to create a worktree from an explicit branch name.${_lwt_reset}"
 }
 
 lwt::ui::help_list() {
@@ -650,6 +761,130 @@ lwt::cmd::switch() {
   fi
 }
 
+lwt::checkout::print_candidates() {
+  local record wt_path branch title number
+  local -A worktree_paths=()
+
+  while IFS= read -r record; do
+    wt_path="${record%%$'\t'*}"
+    branch="${record#*$'\t'}"
+    [[ -z "$branch" || "$branch" == "(detached)" ]] && continue
+    worktree_paths["$branch"]="$wt_path"
+  done < <(lwt::worktree::records)
+
+  lwt::status::init_gh_mode
+  [[ "$LWT_GH_MODE" != "ok" ]] && return 1
+
+  while IFS=$'\t' read -r branch number title; do
+    [[ -z "$branch" ]] && continue
+    [[ -n "${worktree_paths[$branch]}" ]] && continue
+
+    printf 'pr\t%s\t%sPR #%-5s%s  %s%s%s  %s\n' \
+      "$branch" \
+      "$_lwt_orange" "$number" "$_lwt_reset" \
+      "$_lwt_bold" "$branch" "$_lwt_reset" \
+      "$title"
+  done < <(gh pr list --state open --limit 100 --json headRefName,number,title -q '.[] | "\(.headRefName)\t\(.number)\t\(.title)"' 2>/dev/null)
+}
+
+lwt::cmd::checkout() {
+  local query=""
+  local open_editor=false
+  local editor_override=""
+  local selection kind ref dir
+  local -a candidates
+
+  while (( $# > 0 )); do
+    case "$1" in
+      -h|--help)
+        lwt::ui::help_checkout
+        return 0
+        ;;
+      -e|--editor)
+        open_editor=true
+        ;;
+      --editor-cmd)
+        if [[ -z "$2" ]]; then
+          lwt::ui::error "--editor-cmd expects a value."
+          return 1
+        fi
+        editor_override="$2"
+        shift
+        ;;
+      --editor-cmd=*)
+        editor_override="${1#--editor-cmd=}"
+        ;;
+      --)
+        shift
+        query="$*"
+        break
+        ;;
+      *)
+        query="$query${query:+ }$1"
+        ;;
+    esac
+    shift
+  done
+
+  if ! lwt::deps::has fzf; then
+    lwt::ui::error "fzf is required for lwt checkout. Install with: brew install fzf"
+    return 1
+  fi
+
+  lwt::status::init_gh_mode
+  case "$LWT_GH_MODE" in
+    missing)
+      lwt::ui::error "gh is required for lwt checkout."
+      lwt::ui::hint "Install gh: brew install gh"
+      return 1
+      ;;
+    unauthenticated)
+      lwt::ui::error "gh auth is required for lwt checkout."
+      lwt::ui::hint "Run: gh auth login"
+      return 1
+      ;;
+  esac
+
+  while IFS= read -r selection; do
+    candidates+=("$selection")
+  done < <(lwt::checkout::print_candidates)
+
+  if [[ ${#candidates[@]} -eq 0 ]]; then
+    lwt::ui::hint "No open PRs without worktrees."
+    lwt::ui::hint "Use lwt s to switch worktrees, or lwt a <branch> to create one explicitly."
+    return 0
+  fi
+
+  selection=$(printf '%s\n' "${candidates[@]}" | fzf --ansi --height 50% --reverse \
+    --prompt="Checkout PR: " --query="$query" --delimiter='\t' --with-nth=3..)
+
+  [[ -z "$selection" ]] && return 0
+
+  kind=$(printf '%s\n' "$selection" | awk -F'\t' '{print $1}')
+  ref=$(printf '%s\n' "$selection" | awk -F'\t' '{print $2}')
+
+  case "$kind" in
+    pr)
+      dir=$(lwt::worktree::path_for_branch "$ref" 2>/dev/null)
+      if [[ -z "$dir" ]]; then
+        lwt::worktree::create_branch "$ref" false false || return 1
+        dir="$LWT_LAST_WORKTREE_PATH"
+        [[ -z "$dir" ]] && return 1
+        lwt::ui::success "Created worktree ${ref}."
+      fi
+      ;;
+    *)
+      lwt::ui::error "Unknown selection type: $kind"
+      return 1
+      ;;
+  esac
+
+  cd "$dir" || return 1
+  if $open_editor; then
+    lwt::editor::open "$dir" "$editor_override"
+  fi
+}
+
 lwt::cmd::add() {
   local branch=""
   local agent=""
@@ -730,58 +965,9 @@ lwt::cmd::add() {
     return 1
   fi
 
-  local repo_root project base target
-  repo_root=$(lwt::worktree::main_path) || return 1
-  project=$(basename "$repo_root")
-  base="$repo_root/../.worktrees/$project"
-  target="$base/$branch"
-
-  if [[ -e "$target" ]]; then
-    lwt::ui::error "Target path already exists: $target"
-    return 1
-  fi
-
-  mkdir -p "$base"
-  lwt::git::fetch_if_stale
-
-  local start_ref="$LWT_DEFAULT_BASE_REF"
-  git rev-parse --verify "$start_ref" >/dev/null 2>&1 || start_ref="HEAD"
-
-  local git_err
-  if git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null; then
-    if ! read -rq "?Branch $branch exists locally. Check out into a worktree? [y/N] "; then
-      echo
-      return 1
-    fi
-    echo
-    git_err=$(git worktree add "$target" "$branch" 2>&1) || {
-      lwt::ui::error "Failed to create worktree."
-      lwt::ui::hint "$git_err"
-      return 1
-    }
-    lwt::ui::step "Checked out existing branch ${_lwt_bold}$branch${_lwt_reset}"
-  elif git show-ref --verify --quiet "refs/remotes/origin/$branch" 2>/dev/null; then
-    if ! read -rq "?Branch $branch exists on origin. Check out into a worktree? [y/N] "; then
-      echo
-      return 1
-    fi
-    echo
-    git_err=$(git worktree add --track -b "$branch" "$target" "origin/$branch" 2>&1) || {
-      lwt::ui::error "Failed to create worktree."
-      lwt::ui::hint "$git_err"
-      return 1
-    }
-    lwt::ui::step "Checked out existing branch ${_lwt_bold}$branch${_lwt_reset}${_lwt_dim} from origin"
-  else
-    git_err=$(git worktree add -b "$branch" "$target" "$start_ref" 2>&1) || {
-      lwt::ui::error "Failed to create worktree."
-      lwt::ui::hint "$git_err"
-      return 1
-    }
-    lwt::ui::step "Created branch ${_lwt_bold}$branch${_lwt_reset}${_lwt_dim} from ${LWT_DEFAULT_BASE_REF}"
-  fi
-
-  lwt::utils::copy_env_files "$repo_root" "$target"
+  lwt::worktree::create_branch "$branch" true true || return 1
+  local target="$LWT_LAST_WORKTREE_PATH"
+  [[ -z "$target" ]] && return 1
 
   cd "$target" || return 1
 
@@ -1376,6 +1562,11 @@ lwt::dispatch() {
       lwt::git::resolve_default_branch
       lwt::cmd::add "$@"
       ;;
+    checkout|co)
+      lwt::git::ensure_repo || return 1
+      lwt::git::resolve_default_branch
+      lwt::cmd::checkout "$@"
+      ;;
     switch|s)
       lwt::git::ensure_repo || return 1
       lwt::git::resolve_default_branch
@@ -1408,6 +1599,9 @@ lwt::dispatch() {
       case "$1" in
         add|a)
           lwt::ui::help_add
+          ;;
+        checkout|co)
+          lwt::ui::help_checkout
           ;;
         switch|s)
           lwt::ui::help_switch
