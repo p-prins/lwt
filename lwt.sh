@@ -7,7 +7,7 @@
 #   source /path/to/lwt.sh
 #
 # Commands:
-#   lwt add [name] [-e] [--editor-cmd "cmd"] [-claude|-codex|-gemini "prompt"]
+#   lwt add [name] [-e] [--editor-cmd "cmd"] [-claude|-codex|-gemini [prompt]]
 #   lwt checkout [query] [-e] [--editor-cmd "cmd"]
 #   lwt switch [query] [-e] [--editor-cmd "cmd"]
 #   lwt list
@@ -535,7 +535,7 @@ lwt::agent::launch() {
   local agent="$1"
   local prompt="$2"
   local yolo="$3"
-  [[ -z "$agent" || -z "$prompt" ]] && return 0
+  [[ -z "$agent" ]] && return 0
 
   if ! lwt::deps::has "$agent"; then
     lwt::ui::warn "$agent is not installed; skipping AI launch."
@@ -553,23 +553,47 @@ lwt::agent::launch() {
   case "$agent" in
     claude)
       if [[ "$yolo" == "true" ]]; then
-        claude --dangerously-skip-permissions "$prompt"
+        if [[ -n "$prompt" ]]; then
+          claude --dangerously-skip-permissions "$prompt"
+        else
+          claude --dangerously-skip-permissions
+        fi
       else
-        claude "$prompt"
+        if [[ -n "$prompt" ]]; then
+          claude "$prompt"
+        else
+          claude
+        fi
       fi
       ;;
     codex)
       if [[ "$yolo" == "true" ]]; then
-        codex --yolo "$prompt"
+        if [[ -n "$prompt" ]]; then
+          codex --yolo "$prompt"
+        else
+          codex --yolo
+        fi
       else
-        codex "$prompt"
+        if [[ -n "$prompt" ]]; then
+          codex "$prompt"
+        else
+          codex
+        fi
       fi
       ;;
     gemini)
       if [[ "$yolo" == "true" ]]; then
-        gemini --yolo "$prompt"
+        if [[ -n "$prompt" ]]; then
+          gemini --yolo "$prompt"
+        else
+          gemini --yolo
+        fi
       else
-        gemini "$prompt"
+        if [[ -n "$prompt" ]]; then
+          gemini "$prompt"
+        else
+          gemini
+        fi
       fi
       ;;
   esac
@@ -612,9 +636,9 @@ lwt::ui::help_add() {
   echo "  ${_lwt_bold}-s, --setup${_lwt_reset}            ${_lwt_dim}Install dependencies after creating the worktree${_lwt_reset}"
   echo "  ${_lwt_bold}-e, --editor${_lwt_reset}           ${_lwt_dim}Open the worktree in your editor${_lwt_reset}"
   echo "  ${_lwt_bold}--editor-cmd \"cmd\"${_lwt_reset}     ${_lwt_dim}Override editor command for this run${_lwt_reset}"
-  echo "  ${_lwt_bold}-claude \"prompt\"${_lwt_reset}       ${_lwt_dim}Launch Claude after setup${_lwt_reset}"
-  echo "  ${_lwt_bold}-codex \"prompt\"${_lwt_reset}        ${_lwt_dim}Launch Codex after setup${_lwt_reset}"
-  echo "  ${_lwt_bold}-gemini \"prompt\"${_lwt_reset}       ${_lwt_dim}Launch Gemini after setup${_lwt_reset}"
+  echo "  ${_lwt_bold}-claude [prompt]${_lwt_reset}        ${_lwt_dim}Launch Claude after setup${_lwt_reset}"
+  echo "  ${_lwt_bold}-codex [prompt]${_lwt_reset}         ${_lwt_dim}Launch Codex after setup${_lwt_reset}"
+  echo "  ${_lwt_bold}-gemini [prompt]${_lwt_reset}        ${_lwt_dim}Launch Gemini after setup${_lwt_reset}"
   echo "  ${_lwt_bold}-yolo${_lwt_reset}                  ${_lwt_dim}Give the agent full auto-approve permissions${_lwt_reset}"
   echo "  ${_lwt_bold}-h, --help${_lwt_reset}             ${_lwt_dim}Show help${_lwt_reset}"
   echo

@@ -25,7 +25,7 @@ lwt doctor
 ## Usage
 
 ```bash
-lwt add (a)        [branch] [-s] [-e] [-yolo] [-claude|-codex|-gemini "prompt"]
+lwt add (a)        [branch] [-s] [-e] [-yolo] [-claude|-codex|-gemini [prompt]]
 lwt checkout (co)  [query] [-e]
 lwt switch (s)     [query] [-e]
 lwt list (ls)
@@ -77,6 +77,8 @@ lwt a feat-ui -gemini "refactor profile page layout"
 ```
 
 The worktree is created, your shell `cd`s into it, and the agent starts working. Each agent gets its own isolated worktree so it can't interfere with your main checkout.
+
+The prompt is optional. Passing `-claude`, `-codex`, or `-gemini` by itself launches that agent interactively in the new worktree.
 
 By default, agents launch in interactive mode. Pass `-yolo` to auto-approve all agent actions for that run, or set it globally:
 
