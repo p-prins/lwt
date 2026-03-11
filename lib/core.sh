@@ -1,0 +1,97 @@
+# Colors
+_lwt_red=$'\033[1;31m'
+_lwt_green=$'\033[32m'
+_lwt_yellow=$'\033[33m'
+_lwt_orange=$'\033[38;5;208m'
+_lwt_dim=$'\033[2m'
+_lwt_bold=$'\033[1m'
+_lwt_reset=$'\033[0m'
+
+typeset -g LWT_DEFAULT_BRANCH=""
+typeset -g LWT_DEFAULT_BASE_REF=""
+typeset -g LWT_GH_MODE=""
+typeset -g LWT_GH_NOTICE_PRINTED=0
+typeset -g LWT_LAST_WORKTREE_PATH=""
+
+lwt::deps::has() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+lwt::ui::error() {
+  echo "${_lwt_red}✗ $*${_lwt_reset}" >&2
+}
+
+lwt::ui::warn() {
+  echo "${_lwt_yellow}⚠ $*${_lwt_reset}" >&2
+}
+
+lwt::ui::hint() {
+  echo "  ${_lwt_dim}$*${_lwt_reset}" >&2
+}
+
+lwt::ui::header() {
+  echo "${_lwt_bold}$*${_lwt_reset}"
+}
+
+lwt::ui::success() {
+  echo "${_lwt_green}✓ $*${_lwt_reset}"
+}
+
+lwt::ui::step() {
+  echo "${_lwt_dim}› $*${_lwt_reset}"
+}
+lwt::utils::random_branch_name() {
+  local -a adjectives=(
+    swift calm bold warm cool keen slim fast bright sharp
+    clear fresh light quick deep still free wild pure raw
+    soft dry flat low neat pale wide dark loud prime
+    kind lean true firm safe held rare long next broad
+    crisp snug taut dense brisk vivid deft wry agile lucid
+  )
+  local -a nouns=(
+    fox owl elk jay ram bee ant koi yak emu
+    oak ash elm bay cove dale reef vale glen moor
+    jade onyx ruby flint pearl dusk dawn haze mist glow
+    hawk lynx pike wren tern lark colt mare fawn hare
+    gust tide surf wave crest blaze spark drift bloom frost
+  )
+  local adj noun candidate
+
+  # try up to 10 times to find a name not already taken
+  local i
+  for i in {1..10}; do
+    adj="${adjectives[$((RANDOM % ${#adjectives[@]} + 1))]}"
+    noun="${nouns[$((RANDOM % ${#nouns[@]} + 1))]}"
+    candidate="$adj-$noun"
+    if ! git show-ref --verify --quiet "refs/heads/$candidate" 2>/dev/null; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  # fallback: append short random suffix
+  printf '%s-%s\n' "$candidate" "$((RANDOM % 999))"
+}
+
+lwt::utils::copy_env_files() {
+  local repo_root="$1"
+  local target="$2"
+  local env_count=0
+  local file rel dest_dir
+
+  while IFS= read -r -d '' file; do
+    rel="${file#"$repo_root"/}"
+    dest_dir="$target/$(dirname "$rel")"
+    mkdir -p "$dest_dir"
+    cp "$file" "$dest_dir/" && ((env_count++))
+  done < <(find "$repo_root" -type f -name '.env*' -print0 2>/dev/null)
+
+  if ((env_count > 0)); then
+    local s="s"; ((env_count == 1)) && s=""
+    lwt::ui::step "Copied $env_count .env file$s"
+  fi
+}
+
+lwt::shell::quote() {
+  printf '%q' "$1"
+}

@@ -1,10 +1,10 @@
 # lwt — Light Worktrees
 
-Shell-based CLI (`lwt.sh`) for managing git worktrees. Single file, ~1300 lines of zsh/bash.
+Shell-based CLI for managing git worktrees. `lwt.sh` is the public entrypoint and sources the implementation from `lib/*.sh`.
 
 ## Testing
 
-After editing any command in `lwt.sh`, always test it before considering the change done:
+After editing `lwt.sh` or any file in `lib/`, always test through the public entrypoint before considering the change done:
 
 ```bash
 source lwt.sh && lwt <command> [args]
@@ -14,16 +14,24 @@ This catches runtime errors (bad math expressions, missing variables, syntax iss
 
 ## Structure
 
-All commands live in `lwt.sh` as `lwt::cmd::<name>()` functions. Key sections:
+Use `lwt.sh` as the only entrypoint. It sources these modules in order:
 
-- **UI helpers** (`lwt::ui::*`): error, warn, hint, header, success, step — use unicode symbols (✗, ⚠, ✓, ›)
-- **Git utilities** (`lwt::git::*`): repo detection, default branch resolution, stale fetch
-- **Status** (`lwt::status::*`): merge detection, per-worktree flags, gh mode
-- **Worktree display** (`lwt::worktree::*`): parallel status computation for list/selectors
-- **Commands** (`lwt::cmd::*`): add, switch, list, remove, clean, rename, doctor
+- `lib/core.sh`: globals, dependency checks, UI helpers, shared shell/utils
+- `lib/git.sh`: repo detection, default branch resolution, stale fetch
+- `lib/status.sh`: merge detection, per-worktree flags, gh mode
+- `lib/worktree.sh`: worktree discovery, creation, display rows
+- `lib/editor.sh`: editor resolution and launch
+- `lib/project.sh`: package manager detection, script lookup, dependency install, dev command resolution
+- `lib/terminal.sh`: terminal driver detection and split/tab automation
+- `lib/agent.sh`: agent launch and command construction
+- `lib/help.sh`: CLI help text
+- `lib/commands.sh`: `lwt::cmd::*`, checkout helpers, and dispatch
+
+Keep modules as pure function definitions and shared globals. Do not source individual `lib/*.sh` files directly in tests or docs.
 
 ## Dependencies
 
 - Required: `git`, `fzf`, `zsh`
 - Strongly recommended: `gh` (squash-merge detection, PR recreation on rename, PR tags in list)
 - Optional: `claude`, `codex`, `gemini` CLIs
+- Optional for split/tab automation: macOS, `osascript`, and Ghostty or iTerm2
