@@ -1,3 +1,47 @@
+lwt::agent::supported_list() {
+  printf 'claude\ncodex\ngemini\n'
+}
+
+lwt::agent::is_supported() {
+  case "$1" in
+    claude|codex|gemini)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+lwt::agent::normalize_spec() {
+  local spec="$1"
+  local expanded="${spec//,/ }"
+  local token=""
+  local agent=""
+  local -A requested=()
+  local -a tokens=()
+
+  expanded="${expanded//-/ }"
+  [[ -n "$expanded" ]] || return 1
+  tokens=(${=expanded})
+
+  for token in "${tokens[@]}"; do
+    if ! lwt::agent::is_supported "$token"; then
+      return 1
+    fi
+
+    requested[$token]=1
+  done
+
+  [[ ${#requested[@]} -gt 0 ]] || return 1
+
+  while IFS= read -r agent; do
+    [[ -n "${requested[$agent]:-}" ]] && printf '%s\n' "$agent"
+  done < <(lwt::agent::supported_list)
+
+  return 0
+}
+
 lwt::agent::command_string() {
   local agent="$1"
   local prompt="$2"

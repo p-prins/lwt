@@ -1,10 +1,20 @@
 # Light Worktrees (`lwt`)
 
-Git worktrees are powerful but clunky to manage — creating, switching, and cleaning them up involves too many git commands and zero visibility into what's safe to delete. `lwt` wraps the sharp edges into a small, opinionated CLI that stays out of your way.
+Git worktrees are powerful, but the default workflow is awkward: too many commands to create one, too little visibility into what is safe to delete, and too much friction when you just want to jump into parallel work.
 
-One command to create a worktree. One command to remove it — with a clear safety summary showing merge status, dirty files, and unpushed commits so you never lose work by accident.
+`lwt` makes worktrees feel like they should have felt all along: fast to create, easy to switch, and safe to clean up. It also bakes in the workflows that matter in practice, like opening your editor, booting a dev server, or handing a fresh worktree straight to Claude, Codex, or Gemini.
+
+Create a worktree in one command. Remove it with a safety summary that shows merge state, dirty files, and unpushed commits before anything destructive happens.
 
 ![lwt demo](assets/demo.gif)
+
+## Why `lwt`
+
+- Create a new worktree or adopt an existing branch in one command
+- Jump between worktrees with fuzzy search instead of memorizing paths
+- Remove worktrees with a clear safety check before anything gets deleted
+- Launch editors, dev servers, and AI agents as part of the same flow
+- Keep worktrees organized under a predictable `../.worktrees/<project>/<branch>` layout
 
 ## Install
 
@@ -27,7 +37,10 @@ Implementation note: `lwt.sh` remains the only entrypoint you source. It loads t
 ## Usage
 
 ```bash
-lwt add (a)        [branch] [-s] [-e] [-yolo] [--claude|--codex|--gemini [prompt]]
+lwt add (a)        [branch] [-s] [-e] [-yolo]
+                   [--agents claude,codex[,gemini] [prompt]]
+                   [--claude|--codex|--gemini [prompt]]
+                   [--<agent-combo> [prompt]]
                    [--split "cmd"] [--tab "cmd"] [--split-dev]
                    [--split-claude|--split-codex|--split-gemini [prompt]]
 lwt checkout (co)  [query] [-e]
@@ -40,19 +53,26 @@ lwt doctor
 lwt help           [command]
 ```
 
+`--<agent-combo>` means any hyphenated mix of supported agents, for example `--claude-codex`, `--codex-gemini`, or `--claude-codex-gemini`.
+
 Examples:
 
 | Command                                              | Description                                                         |
 | ---------------------------------------------------- | ------------------------------------------------------------------- |
-| `lwt a feat-onboarding -s -e`                        | Start a new feature, install deps, and open it in your editor       |
-| `lwt a feat-login --codex "fix the OAuth callback bug"` | Hand a bugfix straight to Codex in the new worktree              |
-| `lwt a feat-api --codex "implement webhook retries" --split-dev` | Work with Codex while the app boots in a split        |
+| `lwt a feat-onboarding -s -e`                        | Start a feature branch, install deps, and open it in your editor    |
+| `lwt a feat-login --codex "fix the OAuth callback bug"` | Create a worktree and hand the bugfix straight to Codex          |
+| `lwt a feat-auth --agents claude,codex "implement refresh token rotation"` | Run Claude here and open Codex beside it with the same prompt |
+| `lwt a feat-checkout --claude-codex-gemini "review the current checkout flow and propose the best refactor plan"` | Get three independent takes on the same problem in parallel |
+| `lwt a feat-api --codex "implement webhook retries" --split-dev` | Let Codex work while the app boots in a split         |
 | `lwt a feat-search --split "pnpm test --watch" --tab "pnpm lint --watch"` | Open watch sessions alongside the new worktree |
+| `lwt a feat-auth --claude-codex "implement refresh token rotation"` | Use the shorter alias for the same two-agent flow |
 | `lwt a feat-auth --claude "implement refresh token rotation" --split-codex "investigate edge cases in the current auth flow and suggest tests"` | Build with one agent while another investigates in parallel |
 | `lwt a`                                              | Create a worktree with a random branch name                         |
 | `lwt a existing-remote-branch`                       | Bring an existing local or remote branch under `lwt` management     |
 | `lwt co restream`                                    | Pick an open PR matching `restream` and create its worktree         |
+| `lwt co auth -e`                                     | Pull an open PR into its own worktree and open it in your editor    |
 | `lwt s auth -e`                                      | Jump to a worktree and open it in your editor                       |
+| `lwt rm feat-auth`                                   | Remove a worktree with a safety summary before anything is deleted  |
 | `lwt clean -n`                                       | Preview merged worktrees before deleting anything                   |
 | `lwt rn new-api-name`                                | Rename the current worktree and branch together                     |
 
@@ -69,7 +89,7 @@ This matters most during `remove` — you'll see exactly what you'd lose before 
 
 ## AI Agent Launch
 
-Spin up a worktree and immediately hand it off to an AI coding agent — one command:
+Spin up a worktree and immediately hand it off to an AI coding agent:
 
 ```bash
 lwt a feat-api --claude "add retries to webhook sender"
@@ -77,9 +97,27 @@ lwt a feat-api --codex "implement OAuth callback handling"
 lwt a feat-ui --gemini "refactor profile page layout"
 ```
 
-The worktree is created, your shell `cd`s into it, and the agent starts working. Each agent gets its own isolated worktree so it can't interfere with your main checkout.
+The worktree is created, your shell `cd`s into it, and the agent starts working in an isolated checkout that cannot interfere with your main repository state.
 
-The prompt is optional. Passing `--claude`, `--codex`, or `--gemini` by itself launches that agent interactively in the new worktree.
+Single-agent flags are shorthand for `--agents` with one item, so `--claude`, `--codex`, and `--gemini` still work exactly as before. The prompt is optional. Passing one of those flags by itself launches that agent interactively in the new worktree.
+
+For multiple agents with the same prompt, use `--agents` or a hyphen alias:
+
+```bash
+lwt a feat-auth --agents claude,codex "implement refresh token rotation"
+lwt a feat-auth --claude-codex "implement refresh token rotation"
+lwt a feat-auth --codex-gemini "compare two refactor approaches"
+```
+
+This is best when you want multiple independent takes on the same prompt: reviews, plans, audits, debugging hypotheses, or implementation attempts.
+
+When more than one runnable agent is requested, `lwt` uses the current shell for the first agent and opens one split per remaining agent when terminal automation is available. If split automation is unavailable, `lwt` still launches the first runnable agent and prints manual launch commands for the rest.
+
+If you want different agents doing different jobs, use explicit split-agent flags instead:
+
+```bash
+lwt a feat-auth --claude "implement refresh token rotation" --split-codex "investigate edge cases in the current auth flow and suggest tests"
+```
 
 By default, agents launch in interactive mode. Pass `-yolo` to auto-approve all agent actions for that run, or set it globally:
 
@@ -98,16 +136,18 @@ lwt a feat-api --split-gemini "compare these approaches"
 These differ from `--claude`, `--codex`, and `--gemini` in one important way:
 
 - `--claude` / `--codex` / `--gemini` launch the agent in your current shell after `cd`-ing into the new worktree
+- `--agents claude,codex` and hyphen aliases like `--claude-codex` launch the first agent in your current shell and the rest in splits when supported
 - `--split-claude` / `--split-codex` / `--split-gemini` launch a second agent session in a new split, leaving your current shell free
 
 ## Terminal Automation
 
-`lwt add` can also open extra sessions in your terminal after the worktree is ready:
+`lwt add` can also open the sessions you usually need right after the worktree is ready:
 
 ```bash
 lwt a feat-api --split "pnpm test --watch"
 lwt a feat-api --tab "pnpm lint --watch"
 lwt a feat-api --codex "fix auth" --split-dev
+lwt a feat-auth --agents claude,codex "fix auth edge cases"
 ```
 
 What each flag does:
@@ -115,11 +155,12 @@ What each flag does:
 - `--split "cmd"` runs any command in a new terminal split inside the new worktree
 - `--tab "cmd"` runs any command in a new terminal tab inside the new worktree
 - `--split-dev` resolves the repo's dev command and runs it in a split
+- `--agents claude,codex` launches the first agent in your current shell and opens splits for the rest when more than one agent is requested
 - `--split-claude [prompt]` launches Claude in a split, optionally with an initial prompt
 - `--split-codex [prompt]` launches Codex in a split, optionally with an initial prompt
 - `--split-gemini [prompt]` launches Gemini in a split, optionally with an initial prompt
 
-You can combine multiple session flags in one command if you want several extra sessions opened for the same worktree.
+You can combine multiple session flags in one command if you want the worktree, app, tests, and agents to come up together.
 
 Recommended workflows:
 
@@ -129,6 +170,9 @@ lwt a feat-checkout --split-dev
 
 # Codex works in the current shell, dev server runs beside it
 lwt a feat-billing --codex "fix invoice retry handling" --split-dev
+
+# Claude runs in the current shell, Codex opens beside it
+lwt a feat-auth --agents claude,codex "implement refresh token rotation"
 
 # One extra split for tests, one extra tab for linting
 lwt a feat-search --split "pnpm test --watch" --tab "pnpm lint --watch"
@@ -155,7 +199,7 @@ lwt a feat-api -s                # create worktree + install deps
 
 `lwt` detects your package manager from the lockfile — pnpm, bun, yarn, or npm.
 
-When using an agent flag (`--claude`, `--codex`, `--gemini`, `--split-claude`, `--split-codex`, `--split-gemini`), dependencies are always installed automatically since agents need a working environment.
+When using an agent flag (`--agents`, `--claude`, `--codex`, `--gemini`, `--split-claude`, `--split-codex`, `--split-gemini`), dependencies are always installed automatically since agents need a working environment.
 
 `--split-dev` also forces setup before launching the dev command in a split. The dev command resolves in this order:
 
