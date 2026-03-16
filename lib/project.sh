@@ -55,8 +55,8 @@ PY
 lwt::project::dev_command() {
   local configured
 
-  configured=$(git config --get lwt.dev-cmd 2>/dev/null)
-  if [[ -n "$configured" ]]; then
+  configured=$(lwt::config::get_raw "dev-cmd" 2>/dev/null)
+  if [[ -n "$configured" && "$configured" != "auto" ]]; then
     printf '%s\n' "$configured"
     return 0
   fi

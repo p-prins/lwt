@@ -16,9 +16,12 @@
 #   lwt checkout [query] [-e] [--editor-cmd "cmd"]
 #   lwt switch [query] [-e] [--editor-cmd "cmd"]
 #   lwt list
+#   lwt merge [target-branch] [--keep-worktree] [--keep-branch] [--no-push]
 #   lwt remove [query]
 #   lwt clean [-n]
 #   lwt rename <new-name>
+#   lwt config [show|get|set|unset] [--global|--local]
+#   lwt hook [list|path|run] [event]
 #   lwt doctor
 #   lwt help [command]
 
@@ -28,7 +31,7 @@ else
   LWT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 fi
 
-for _lwt_module in core git status worktree editor project terminal agent help commands; do
+for _lwt_module in core git config status worktree editor project terminal agent hooks help commands; do
   _lwt_lib="$LWT_ROOT/lib/${_lwt_module}.sh"
   if [[ ! -f "$_lwt_lib" ]]; then
     echo "lwt: missing required file: $_lwt_lib" >&2

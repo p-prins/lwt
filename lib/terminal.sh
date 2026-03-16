@@ -2,7 +2,7 @@ lwt::terminal::resolve_driver() {
   local configured="${LWT_TERMINAL:-}"
 
   if [[ -z "$configured" ]]; then
-    configured=$(git config --get lwt.terminal 2>/dev/null)
+    configured=$(lwt::config::get_effective "terminal" 2>/dev/null)
   fi
 
   if [[ -z "$configured" || "$configured" == "auto" ]]; then

@@ -6,9 +6,11 @@ lwt::ui::help_main() {
   echo "  ${_lwt_bold}checkout, co${_lwt_reset} ${_lwt_dim}Pick an open PR and spawn a worktree${_lwt_reset}"
   echo "  ${_lwt_bold}switch, s${_lwt_reset}    ${_lwt_dim}Switch to a worktree via fzf${_lwt_reset}"
   echo "  ${_lwt_bold}list, ls${_lwt_reset}     ${_lwt_dim}List worktrees with live status${_lwt_reset}"
+  echo "  ${_lwt_bold}merge${_lwt_reset}        ${_lwt_dim}Squash-merge a worktree into the target branch${_lwt_reset}"
   echo "  ${_lwt_bold}remove, rm${_lwt_reset}   ${_lwt_dim}Remove a worktree safely${_lwt_reset}"
   echo "  ${_lwt_bold}clean${_lwt_reset}        ${_lwt_dim}Remove all merged worktrees at once${_lwt_reset}"
   echo "  ${_lwt_bold}rename, rn${_lwt_reset}   ${_lwt_dim}Rename a worktree and its branch${_lwt_reset}"
+  echo "  ${_lwt_bold}config, cfg${_lwt_reset}  ${_lwt_dim}Show and change lwt settings${_lwt_reset}"
   echo "  ${_lwt_bold}doctor${_lwt_reset}       ${_lwt_dim}Check required and optional tooling${_lwt_reset}"
   echo "  ${_lwt_bold}help${_lwt_reset}         ${_lwt_dim}Show command help${_lwt_reset}"
   echo
@@ -24,13 +26,16 @@ lwt::ui::help_main() {
   echo "  lwt co                                     ${_lwt_dim}Pick an open PR and create its worktree${_lwt_reset}"
   echo "  lwt s                                      ${_lwt_dim}Switch worktree with fzf${_lwt_reset}"
   echo "  lwt ls                                     ${_lwt_dim}List all worktrees${_lwt_reset}"
+  echo "  lwt merge                                 ${_lwt_dim}Squash-merge the current worktree into the default branch${_lwt_reset}"
   echo "  lwt rm                                     ${_lwt_dim}Pick and remove a worktree${_lwt_reset}"
+  echo "  lwt config show                            ${_lwt_dim}See effective settings and where they come from${_lwt_reset}"
+  echo "  lwt config set dev-cmd \"pnpm dev\"         ${_lwt_dim}Persist the repo dev command${_lwt_reset}"
   echo
   lwt::ui::header "Config"
-  echo "  git config --global lwt.editor code         ${_lwt_dim}Editor to open worktrees in${_lwt_reset}"
-  echo "  git config --global lwt.agent-mode yolo     ${_lwt_dim}Auto-approve all agent actions${_lwt_reset}"
-  echo "  git config --global lwt.dev-cmd \"pnpm dev\" ${_lwt_dim}Default command for --dev${_lwt_reset}"
-  echo "  git config --global lwt.terminal ghostty    ${_lwt_dim}Preferred terminal driver for splits/tabs${_lwt_reset}"
+  echo "  lwt config set editor zed                   ${_lwt_dim}Editor to open worktrees in${_lwt_reset}"
+  echo "  lwt config set agent-mode yolo              ${_lwt_dim}Auto-approve all agent actions${_lwt_reset}"
+  echo "  lwt config set dev-cmd \"pnpm dev\"          ${_lwt_dim}Default command for --dev${_lwt_reset}"
+  echo "  lwt config set terminal ghostty             ${_lwt_dim}Preferred terminal driver for splits/tabs${_lwt_reset}"
 }
 
 lwt::ui::help_add() {
@@ -57,9 +62,9 @@ lwt::ui::help_add() {
   echo "  ${_lwt_dim}Each agent flag takes its own prompt: --claude \"fix auth\" --codex \"review tests\"${_lwt_reset}"
   echo "  ${_lwt_dim}Hyphen aliases like --claude-codex share one prompt across all agents in the alias.${_lwt_reset}"
   echo "  ${_lwt_dim}When an agent flag is used, dependencies are always installed.${_lwt_reset}"
-  echo "  ${_lwt_dim}Set lwt.dev-cmd for monorepos or non-standard dev commands.${_lwt_reset}"
+  echo "  ${_lwt_dim}Set dev-cmd for monorepos or non-standard dev commands with lwt config set dev-cmd ...${_lwt_reset}"
   echo "  ${_lwt_dim}Split/tab automation currently supports Ghostty and iTerm2 on macOS.${_lwt_reset}"
-  echo "  ${_lwt_dim}Set yolo globally with: git config --global lwt.agent-mode yolo${_lwt_reset}"
+  echo "  ${_lwt_dim}Set yolo globally with: lwt config set agent-mode yolo${_lwt_reset}"
 }
 
 lwt::ui::help_switch() {
@@ -83,12 +88,33 @@ lwt::ui::help_checkout() {
   echo "  ${_lwt_dim}Shows only open PRs that do not already have a worktree.${_lwt_reset}"
   echo "  ${_lwt_dim}Use switch to move to an existing worktree.${_lwt_reset}"
   echo "  ${_lwt_dim}Use add when you want to create a worktree from an explicit branch name.${_lwt_reset}"
+  echo "  ${_lwt_dim}When checkout creates a new worktree, post-create and post-switch hooks run automatically.${_lwt_reset}"
 }
 
 lwt::ui::help_list() {
   echo "${_lwt_bold}Usage:${_lwt_reset} lwt list"
   echo
   echo "  ${_lwt_dim}Shows all worktrees with remote-aware status.${_lwt_reset}"
+}
+
+lwt::ui::help_merge() {
+  echo "${_lwt_bold}Usage:${_lwt_reset} lwt merge [target-branch] [options]"
+  echo
+  echo "  ${_lwt_dim}Squash-merges the selected worktree into the target branch.${_lwt_reset}"
+  echo "  ${_lwt_dim}If the branch has an open PR, lwt merges that PR through GitHub with gh.${_lwt_reset}"
+  echo "  ${_lwt_dim}Defaults to merge-target, or the repo default branch if unset.${_lwt_reset}"
+  echo
+  lwt::ui::header "Options"
+  echo "  ${_lwt_bold}--keep-worktree${_lwt_reset}   ${_lwt_dim}Leave the merged worktree on disk${_lwt_reset}"
+  echo "  ${_lwt_bold}--keep-branch${_lwt_reset}     ${_lwt_dim}Keep the merged local and remote branch${_lwt_reset}"
+  echo "  ${_lwt_bold}--no-push${_lwt_reset}         ${_lwt_dim}Do not push the target branch after merging${_lwt_reset}"
+  echo "  ${_lwt_bold}--admin${_lwt_reset}           ${_lwt_dim}Pass --admin to gh pr merge when merging a PR${_lwt_reset}"
+  echo "  ${_lwt_bold}-h, --help${_lwt_reset}        ${_lwt_dim}Show help${_lwt_reset}"
+  echo
+  lwt::ui::header "Notes"
+  echo "  ${_lwt_dim}With an open PR: gh pr merge --squash, then local cleanup.${_lwt_reset}"
+  echo "  ${_lwt_dim}Without a PR: local rebase, squash, push, then cleanup.${_lwt_reset}"
+  echo "  ${_lwt_dim}If GitHub says bypass/admin is required, lwt offers an interactive retry with --admin.${_lwt_reset}"
 }
 
 lwt::ui::help_remove() {
@@ -134,5 +160,48 @@ lwt::ui::help_rename() {
 lwt::ui::help_doctor() {
   echo "${_lwt_bold}Usage:${_lwt_reset} lwt doctor"
   echo
-  echo "  ${_lwt_dim}Checks required dependencies and optional integrations.${_lwt_reset}"
+  echo "  ${_lwt_dim}Checks required dependencies, optional integrations, and active hook directories.${_lwt_reset}"
+}
+
+lwt::ui::help_config() {
+  echo "${_lwt_bold}Usage:${_lwt_reset} lwt config [show|get|set|unset] ..."
+  echo
+  lwt::ui::header "Commands"
+  echo "  ${_lwt_bold}show${_lwt_reset}                          ${_lwt_dim}Show the core settings you are expected to care about${_lwt_reset}"
+  echo "  ${_lwt_bold}get <key>${_lwt_reset}                     ${_lwt_dim}Print a setting's effective value${_lwt_reset}"
+  echo "  ${_lwt_bold}set <key> <value>${_lwt_reset}             ${_lwt_dim}Persist a setting${_lwt_reset}"
+  echo "  ${_lwt_bold}unset <key>${_lwt_reset}                   ${_lwt_dim}Remove a persisted setting${_lwt_reset}"
+  echo
+  lwt::ui::header "Scope Flags"
+  echo "  ${_lwt_bold}--global${_lwt_reset}                      ${_lwt_dim}Write to ~/.gitconfig${_lwt_reset}"
+  echo "  ${_lwt_bold}--local${_lwt_reset}                       ${_lwt_dim}Write to the current repo config${_lwt_reset}"
+  echo "  ${_lwt_bold}--all${_lwt_reset}                         ${_lwt_dim}Show advanced/internal settings too${_lwt_reset}"
+  echo
+  lwt::ui::header "Keys"
+  echo "  ${_lwt_bold}editor${_lwt_reset}                        ${_lwt_dim}Global by default${_lwt_reset}"
+  echo "  ${_lwt_bold}agent-mode${_lwt_reset}                    ${_lwt_dim}Global by default; interactive or yolo${_lwt_reset}"
+  echo "  ${_lwt_bold}dev-cmd${_lwt_reset}                       ${_lwt_dim}Local by default${_lwt_reset}"
+  echo "  ${_lwt_bold}terminal${_lwt_reset}                      ${_lwt_dim}Global by default; auto, ghostty, iterm2${_lwt_reset}"
+  echo "  ${_lwt_bold}merge-target${_lwt_reset}                  ${_lwt_dim}Local by default${_lwt_reset}"
+  echo
+  echo "  ${_lwt_dim}Advanced hook settings exist, but they are intentionally hidden from the default output.${_lwt_reset}"
+}
+
+lwt::ui::help_hook() {
+  echo "${_lwt_bold}Usage:${_lwt_reset} lwt hook <list|path|run> [event]"
+  echo
+  echo "  ${_lwt_dim}Advanced workflow automation. Most users should ignore this.${_lwt_reset}"
+  echo
+  lwt::ui::header "Why"
+  echo "  ${_lwt_dim}Use hooks when a repo always needs the same tiny setup or check step at worktree lifecycle moments.${_lwt_reset}"
+  echo "  ${_lwt_dim}Good examples: copy .env.local on create, print a local URL on switch, run a fast check before merge.${_lwt_reset}"
+  echo
+  lwt::ui::header "Where"
+  echo "  ${_lwt_dim}Repo hooks: .lwt/hooks/<event>${_lwt_reset}"
+  echo "  ${_lwt_dim}User hooks: ~/.config/lwt/hooks/<event>${_lwt_reset}"
+  echo
+  lwt::ui::header "Examples"
+  echo "  lwt hook list"
+  echo "  lwt hook path post-create"
+  echo "  lwt hook run pre-merge"
 }

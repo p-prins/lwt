@@ -89,10 +89,10 @@ lwt::agent::launch() {
     return 0
   fi
 
-  # Resolve yolo mode: flag > git config > default (off)
+  # Resolve yolo mode: flag > config > default (interactive)
   if [[ "$yolo" != "true" ]]; then
     local configured
-    configured=$(git config --get lwt.agent-mode 2>/dev/null)
+    configured=$(lwt::config::get_effective "agent-mode" 2>/dev/null)
     [[ "$configured" == "yolo" ]] && yolo=true
   fi
 

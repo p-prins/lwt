@@ -45,9 +45,11 @@ lwt add (a)        [branch] [-s] [-d] [-e] [-yolo]
 lwt checkout (co)  [query] [-e]
 lwt switch (s)     [query] [-e]
 lwt list (ls)
+lwt merge          [target-branch] [--keep-worktree] [--keep-branch] [--no-push]
 lwt remove (rm)    [query]
 lwt clean          [-n]
 lwt rename (rn)    <new-name>
+lwt config (cfg)   [show|get|set|unset] [--global|--local]
 lwt doctor
 lwt help           [command]
 ```
@@ -71,9 +73,11 @@ Examples:
 | `lwt co restream`                                    | Pick an open PR matching `restream` and create its worktree         |
 | `lwt co auth -e`                                     | Pull an open PR into its own worktree and open it in your editor    |
 | `lwt s auth -e`                                      | Jump to a worktree and open it in your editor                       |
+| `lwt merge`                                          | Squash-merge the current worktree into the configured target branch |
 | `lwt rm feat-auth`                                   | Remove a worktree with a safety summary before anything is deleted  |
 | `lwt clean -n`                                       | Preview merged worktrees before deleting anything                   |
 | `lwt rn new-api-name`                                | Rename the current worktree and branch together                     |
+| `lwt config set dev-cmd "pnpm --filter web dev"`     | Persist the repo's preferred dev command                            |
 
 ## Remote-Aware Status
 
@@ -85,6 +89,30 @@ Examples:
 - **behind** — remote has commits you haven't pulled
 
 This matters most during `remove` — you'll see exactly what you'd lose before confirming.
+
+## Merge
+
+`lwt merge` is intentionally opinionated:
+
+- if the branch has an open PR, `lwt` merges that PR through GitHub with `gh pr merge --squash`
+- otherwise it falls back to a local squash merge
+- after either path, it cleans up the source worktree and branch by default
+
+If GitHub rejects the PR merge because bypass/admin privileges are required, `lwt` keeps the error output visible and offers an interactive retry with `--admin`.
+
+By default it merges into:
+
+1. `merge-target` if configured
+2. otherwise the repo default branch
+
+Typical usage:
+
+```bash
+lwt merge
+lwt merge release
+lwt merge --keep-worktree
+lwt merge --admin
+```
 
 ## AI Agent Launch
 
@@ -127,7 +155,7 @@ lwt a feat-auth --codex "investigate edge cases" --claude "implement refresh tok
 By default, agents launch in interactive mode. Pass `-yolo` to auto-approve all agent actions for that run, or set it globally:
 
 ```bash
-git config --global lwt.agent-mode yolo
+lwt config set agent-mode yolo
 ```
 
 ## Terminal Automation
@@ -176,10 +204,75 @@ lwt a feat-api --claude "fix auth" -d --split "pnpm test --watch"
 Today this supports Ghostty and iTerm2 on macOS. `lwt` auto-detects the current terminal from `TERM_PROGRAM`, or you can pin one explicitly:
 
 ```bash
-git config --global lwt.terminal ghostty
+lwt config set terminal ghostty
 ```
 
 Use `lwt doctor` to confirm whether terminal automation is available and which driver was detected.
+
+## Advanced Hooks
+
+Most users can ignore this section.
+
+`lwt` has a lightweight hook layer for teams that want a bit of automation around worktree lifecycle events. If a hook file exists, it runs automatically:
+
+Use this only when a repo repeatedly needs the same small step:
+
+- `post-create`: copy `.env.local`, warm a cache, run a tiny bootstrap
+- `post-switch`: print the local app URL or open something helpful
+- `pre-merge`: run a fast final check before `lwt merge`
+
+- User hooks live in `~/.config/lwt/hooks`
+- Repo hooks live in `.lwt/hooks` and travel with the repository
+- A single-file hook like `.lwt/hooks/post-create` runs first for that event
+- A directory like `.lwt/hooks/post-create.d/` runs every file in lexical order after that
+
+Current lifecycle events:
+
+- `post-create` — after the worktree exists and setup has finished, before the editor, terminal sessions, or agents launch
+- `post-switch` — after `lwt switch`, and after `add`/`checkout` move you into the new worktree
+- `pre-merge` / `post-merge` — around `merge`
+
+Hook failures are treated as hard failures for the active workflow. That is intentional: if your bootstrap, cleanup, or rename automation is important enough to hook in, `lwt` should stop instead of carrying on half-configured.
+
+The `lwt hook` command is there mostly for debugging and discovery:
+
+```bash
+lwt hook list
+lwt hook path post-create
+lwt hook run pre-merge
+```
+
+Each hook runs with these environment variables available:
+
+- `LWT_HOOK_EVENT`
+- `LWT_REPO_ROOT`
+- `LWT_WORKTREE_PATH`
+- `LWT_BRANCH`
+- `LWT_DEFAULT_BRANCH`
+- `LWT_DEFAULT_BASE_REF`
+
+Some events also expose extra context such as `LWT_MAIN_WORKTREE_PATH`, `LWT_REMOVED_WORKTREE_PATH`, `LWT_OLD_BRANCH`, `LWT_NEW_BRANCH`, `LWT_OLD_WORKTREE_PATH`, and `LWT_NEW_WORKTREE_PATH`.
+
+Example `post-create` hook:
+
+```bash
+#!/usr/bin/env zsh
+set -euo pipefail
+
+[[ -f .env.example && ! -f .env.local ]] && cp .env.example .env.local
+[[ -f package.json ]] && pnpm test -- --runInBand
+```
+
+Example layout:
+
+```text
+.lwt/
+  hooks/
+    post-create
+    post-switch.d/
+      10-copy-cache
+      20-open-dashboard
+```
 
 ## Dependency Setup
 
@@ -195,13 +288,13 @@ When using an agent flag (`--agents`, `--claude`, `--codex`, `--gemini`, or any 
 
 `--dev` also forces setup before launching the dev command. The dev command resolves in this order:
 
-1. `git config lwt.dev-cmd`
+1. `lwt config set dev-cmd ...`
 2. Root `package.json` `scripts.dev`, run with the detected package manager
 
 For monorepos or custom workflows, set it explicitly:
 
 ```bash
-git config --global lwt.dev-cmd "pnpm --filter web dev"
+lwt config set dev-cmd "pnpm --filter web dev"
 ```
 
 ## Worktree Layout
@@ -242,7 +335,7 @@ Pass `-e` to open the worktree in your editor after creating or switching.
 Resolution order:
 
 1. `--editor-cmd "..."` (per command)
-2. `git config lwt.editor`
+2. `lwt config set editor ...`
 3. `LWT_EDITOR`
 4. `VISUAL`
 5. `EDITOR`
@@ -250,8 +343,35 @@ Resolution order:
 Recommended setup:
 
 ```bash
-git config --global lwt.editor zed
+lwt config set editor zed
 ```
+
+## Config
+
+`lwt config` is the canonical way to inspect and update settings:
+
+```bash
+lwt config show
+lwt config set editor zed
+lwt config set agent-mode yolo
+lwt config set dev-cmd "pnpm --filter web dev"
+lwt config set merge-target release
+```
+
+Defaults are opinionated:
+
+- `editor`, `agent-mode`, and `terminal` write to global Git config by default
+- `dev-cmd` and `merge-target` write to the current repo by default
+
+Supported keys:
+
+- `editor`
+- `agent-mode`
+- `dev-cmd`
+- `terminal`
+- `merge-target`
+
+`lwt config show` intentionally hides advanced/internal settings. The default view is meant to stay small.
 
 ## Requirements
 

@@ -12,22 +12,47 @@ source lwt.sh && lwt <command> [args]
 
 This catches runtime errors (bad math expressions, missing variables, syntax issues) that aren't visible from reading the code alone.
 
+For interactive commands such as `merge`, `remove`, `rename`, and `clean`, test with a TTY/PTY so confirmation prompts behave like a real shell session.
+
+## zsh Footguns
+
+- Do not use `status` as a local variable name. In `zsh`, `$status` is a read-only special parameter for the last exit code.
+- Prefer names like `exit_code`, `result_code`, or `merge_status` instead.
+
+## Merge Behavior
+
+- `lwt merge` has two paths:
+  - Open PR exists: merge the PR through GitHub with `gh pr merge --squash`
+  - No PR exists: fall back to the local squash-merge flow
+- When a PR exists, GitHub is the source of truth. Do not replace the PR merge with a local `git merge --squash` flow that only approximates the result.
+- Keep the UX explicit about which path is being used.
+- If GitHub requires bypass/admin privileges, keep that explicit and preserve a clear `--admin` path.
+- The local fallback path requires a clean main worktree because it modifies it directly.
+- The PR path should not be blocked by a dirty main worktree; dirtiness only affects syncing local `main` afterward.
+
 ## Structure
 
 Use `lwt.sh` as the only entrypoint. It sources these modules in order:
 
 - `lib/core.sh`: globals, dependency checks, UI helpers, shared shell/utils
 - `lib/git.sh`: repo detection, default branch resolution, stale fetch
+- `lib/config.sh`: config keys, defaults, scopes, and persistence helpers
 - `lib/status.sh`: merge detection, per-worktree flags, gh mode
 - `lib/worktree.sh`: worktree discovery, creation, display rows
 - `lib/editor.sh`: editor resolution and launch
 - `lib/project.sh`: package manager detection, script lookup, dependency install, dev command resolution
 - `lib/terminal.sh`: terminal driver detection and split/tab automation
 - `lib/agent.sh`: agent launch and command construction
+- `lib/hooks.sh`: advanced hook discovery and execution
 - `lib/help.sh`: CLI help text
 - `lib/commands.sh`: `lwt::cmd::*`, checkout helpers, and dispatch
 
 Keep modules as pure function definitions and shared globals. Do not source individual `lib/*.sh` files directly in tests or docs.
+
+## Product Notes
+
+- `lwt config show` should stay focused on core settings. Advanced/internal hook settings belong behind `--all` or `lwt hook`.
+- Hooks are an advanced feature, not part of the main mental model. Avoid surfacing them prominently in the default UX.
 
 ## Dependencies
 

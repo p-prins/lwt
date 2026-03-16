@@ -6,7 +6,7 @@ lwt::editor::resolve() {
   fi
 
   local from_git
-  from_git=$(git config --get lwt.editor 2>/dev/null)
+  from_git=$(lwt::config::get_raw "editor" 2>/dev/null)
   [[ -n "$from_git" ]] && {
     printf '%s\n' "$from_git"
     return 0
@@ -36,7 +36,7 @@ lwt::editor::open() {
   local editor_cmd
 
   editor_cmd=$(lwt::editor::resolve "$override") || {
-    lwt::ui::hint "No editor configured. Set one with: git config --global lwt.editor \"zed\""
+    lwt::ui::hint "No editor configured. Set one with: lwt config set editor \"zed\""
     lwt::ui::hint "Or set LWT_EDITOR, VISUAL, or EDITOR."
     return 0
   }

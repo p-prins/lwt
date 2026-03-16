@@ -12,6 +12,7 @@ typeset -g LWT_DEFAULT_BASE_REF=""
 typeset -g LWT_GH_MODE=""
 typeset -g LWT_GH_NOTICE_PRINTED=0
 typeset -g LWT_LAST_WORKTREE_PATH=""
+typeset -g LWT_LAST_GH_MERGE_OUTPUT=""
 
 lwt::deps::has() {
   command -v "$1" >/dev/null 2>&1
