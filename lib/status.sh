@@ -41,10 +41,6 @@ lwt::status::is_merged() {
   [[ -z "$branch" || "$branch" == "(detached)" ]] && return 1
   [[ "$branch" == "$LWT_DEFAULT_BRANCH" || "$branch" == "main" || "$branch" == "master" ]] && return 1
 
-  if git merge-base --is-ancestor "$branch" "$LWT_DEFAULT_BASE_REF" 2>/dev/null; then
-    return 0
-  fi
-
   lwt::status::init_gh_mode
   if [[ "$LWT_GH_MODE" != "ok" ]]; then
     return 1
