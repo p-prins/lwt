@@ -564,7 +564,7 @@ lwt::cmd::add() {
     session_payloads+=("__lwt_dev__")
   fi
 
-  lwt::worktree::create_branch "$branch" true true || return 1
+  lwt::worktree::create_branch "$branch" false true || return 1
   local target="$LWT_LAST_WORKTREE_PATH"
   [[ -z "$target" ]] && return 1
 
@@ -1264,6 +1264,9 @@ lwt::cmd::hook() {
 
 lwt::cmd::remove() {
   local query=""
+  local assume_yes=false
+  local force=false
+  local delete_remote=false
 
   while (( $# > 0 )); do
     case "$1" in
@@ -1271,10 +1274,23 @@ lwt::cmd::remove() {
         lwt::ui::help_remove
         return 0
         ;;
+      -y|--yes)
+        assume_yes=true
+        ;;
+      -f|--force)
+        force=true
+        ;;
+      --delete-remote)
+        delete_remote=true
+        ;;
       --)
         shift
         query="$*"
         break
+        ;;
+      -*)
+        lwt::ui::error "Unknown option: $1"
+        return 1
         ;;
       *)
         query="$query${query:+ }$1"
@@ -1295,16 +1311,42 @@ lwt::cmd::remove() {
     fi
     worktree="$current_wt"
   else
-    if ! lwt::deps::has fzf; then
-      lwt::ui::error "fzf is required to pick a worktree. Install with: brew install fzf"
-      return 1
+    if [[ -n "$query" ]]; then
+      worktree=$(lwt::worktree::resolve_query "$query" true)
+      local resolve_exit=$?
+      case "$resolve_exit" in
+        0)
+          ;;
+        1)
+          if [[ ! -t 0 ]]; then
+            lwt::ui::error "No exact worktree matched: $query"
+            lwt::ui::hint "Pass an exact branch name or worktree path, or run lwt rm interactively."
+            return 1
+          fi
+          ;;
+        2)
+          lwt::ui::error "Query matched multiple worktrees: $query"
+          lwt::ui::hint "Pass an exact branch name or worktree path."
+          return 1
+          ;;
+        *)
+          return "$resolve_exit"
+          ;;
+      esac
     fi
 
-    lwt::status::warn_gh_limitations
+    if [[ -z "$worktree" ]]; then
+      if ! lwt::deps::has fzf; then
+        lwt::ui::error "fzf is required to pick a worktree. Install with: brew install fzf"
+        return 1
+      fi
 
-    worktree=$(lwt::worktree::display_rows | awk -F'\t' -v main="$main_wt" '$1 != main' | \
-      fzf --ansi --height 40% --reverse --prompt="Remove worktree: " --query="$query" \
-      --delimiter='\t' --with-nth=2.. | awk -F'\t' '{print $1}')
+      lwt::status::warn_gh_limitations
+
+      worktree=$(lwt::worktree::display_rows | awk -F'\t' -v main="$main_wt" '$1 != main' | \
+        fzf --ansi --height 40% --reverse --prompt="Remove worktree: " --query="$query" \
+        --delimiter='\t' --with-nth=2.. | awk -F'\t' '{print $1}')
+    fi
   fi
 
   [[ -z "$worktree" ]] && return 0
@@ -1366,11 +1408,25 @@ lwt::cmd::remove() {
     fi
   fi
 
-  if ! read -rq "?${_lwt_red}Delete worktree permanently? [y/N]${_lwt_reset} "; then
-    echo
-    return 0
-  fi
-  echo
+  local retry_target="${branch:-$query}"
+  [[ -z "$retry_target" ]] && retry_target="<branch>"
+
+  lwt::ui::confirm "${_lwt_red}Delete worktree permanently? [y/N]${_lwt_reset}" "$assume_yes" \
+    "Retry with: lwt rm $(lwt::shell::quote "$retry_target") --yes"
+  local confirm_exit=$?
+  case "$confirm_exit" in
+    0)
+      ;;
+    1)
+      return 0
+      ;;
+    2)
+      return 1
+      ;;
+    *)
+      return "$confirm_exit"
+      ;;
+  esac
 
   cd "$main_wt" || return 1
 
@@ -1379,11 +1435,26 @@ lwt::cmd::remove() {
 
   if ! git worktree remove "$worktree" 2>/dev/null; then
     if ((changed > 0)); then
-      if ! read -rq "?${_lwt_red}Worktree has local changes. Force remove and discard them? [y/N]${_lwt_reset} "; then
-        echo
-        return 0
+      if [[ "$force" == "true" ]]; then
+        :
+      elif [[ "$assume_yes" == "true" ]]; then
+        lwt::ui::error "Worktree has local changes; refusing to discard them without --force."
+        lwt::ui::hint "Retry with: lwt rm $(lwt::shell::quote "$retry_target") --yes --force"
+        return 1
+      else
+        lwt::ui::confirm "${_lwt_red}Worktree has local changes. Force remove and discard them? [y/N]${_lwt_reset}" false
+        local force_remove_exit=$?
+        case "$force_remove_exit" in
+          0)
+            ;;
+          1)
+            return 0
+            ;;
+          *)
+            return 1
+            ;;
+        esac
       fi
-      echo
     fi
 
     git worktree remove --force "$worktree" || return 1
@@ -1397,14 +1468,26 @@ lwt::cmd::remove() {
       lwt::ui::step "Deleted local branch $branch"
     elif $merged; then
       git branch -D "$branch" >/dev/null 2>&1 && lwt::ui::step "Deleted local branch $branch"
+    elif [[ "$force" == "true" ]]; then
+      git branch -D "$branch" >/dev/null 2>&1 && lwt::ui::step "Deleted local branch $branch"
     else
       lwt::ui::warn "Branch $branch has unmerged work."
-      if read -rq "?${_lwt_red}Force delete local branch? [y/N]${_lwt_reset} "; then
-        echo
-        git branch -D "$branch" >/dev/null 2>&1 && lwt::ui::step "Deleted local branch $branch"
+      if [[ "$assume_yes" == "true" ]]; then
+        lwt::ui::hint "Kept branch $branch. Re-run with --force to delete unmerged local branches automatically."
       else
-        echo
-        lwt::ui::hint "Kept branch $branch."
+        lwt::ui::confirm "${_lwt_red}Force delete local branch? [y/N]${_lwt_reset}" false
+        local force_branch_exit=$?
+        case "$force_branch_exit" in
+          0)
+            git branch -D "$branch" >/dev/null 2>&1 && lwt::ui::step "Deleted local branch $branch"
+            ;;
+          1)
+            lwt::ui::hint "Kept branch $branch."
+            ;;
+          *)
+            return 1
+            ;;
+        esac
       fi
     fi
   fi
@@ -1418,23 +1501,50 @@ lwt::cmd::remove() {
       printf '  Remote branch %sorigin/%s%s still exists.\n' "$_lwt_bold" "$branch" "$_lwt_reset"
       printf '  %s\e]8;;%s\e\\%s\e]8;;\e\\%s is still open.\n' \
         "$_lwt_dim" "$_rm_pr_link" "$_rm_pr_num" "$_lwt_reset"
-      if read -rq "?${_lwt_red}Close PR and delete remote branch? [y/N]${_lwt_reset} "; then
-        echo
+      if [[ "$delete_remote" == "true" ]]; then
         gh pr close "${_rm_pr_num#PR #}" --delete-branch >/dev/null 2>&1 \
           && lwt::ui::step "Closed $_rm_pr_num and deleted remote branch origin/$branch" \
           || lwt::ui::warn "Failed to close PR or delete remote branch."
+      elif [[ "$assume_yes" == "true" ]]; then
+        lwt::ui::hint "Kept open PR and remote branch. Re-run with --delete-remote to clean them up automatically."
       else
-        echo
+        lwt::ui::confirm "${_lwt_red}Close PR and delete remote branch? [y/N]${_lwt_reset}" false
+        local remote_pr_exit=$?
+        case "$remote_pr_exit" in
+          0)
+            gh pr close "${_rm_pr_num#PR #}" --delete-branch >/dev/null 2>&1 \
+              && lwt::ui::step "Closed $_rm_pr_num and deleted remote branch origin/$branch" \
+              || lwt::ui::warn "Failed to close PR or delete remote branch."
+            ;;
+          1)
+            ;;
+          *)
+            return 1
+            ;;
+        esac
       fi
     else
       # no open PR — just offer remote branch deletion
       printf '  Remote branch %sorigin/%s%s still exists.\n' "$_lwt_bold" "$branch" "$_lwt_reset"
-      if read -rq "?${_lwt_red}Delete remote branch? [y/N]${_lwt_reset} "; then
-        echo
+      if [[ "$delete_remote" == "true" ]]; then
         git push origin --delete "$branch" 2>/dev/null \
           && lwt::ui::step "Deleted remote branch origin/$branch"
+      elif [[ "$assume_yes" == "true" ]]; then
+        lwt::ui::hint "Kept remote branch origin/$branch. Re-run with --delete-remote to delete it automatically."
       else
-        echo
+        lwt::ui::confirm "${_lwt_red}Delete remote branch? [y/N]${_lwt_reset}" false
+        local remote_delete_exit=$?
+        case "$remote_delete_exit" in
+          0)
+            git push origin --delete "$branch" 2>/dev/null \
+              && lwt::ui::step "Deleted remote branch origin/$branch"
+            ;;
+          1)
+            ;;
+          *)
+            return 1
+            ;;
+        esac
       fi
     fi
   fi
@@ -1969,6 +2079,9 @@ lwt::dispatch() {
       ;;
     help|-h|--help)
       case "$1" in
+        automation|agent|agents|noninteractive)
+          lwt::ui::help_automation
+          ;;
         add|a)
           lwt::ui::help_add
           ;;
@@ -2014,6 +2127,7 @@ lwt::dispatch() {
     *)
       lwt::ui::error "Unknown command: $cmd"
       lwt::ui::hint "Run: lwt help"
+      lwt::ui::hint "Automation examples: lwt help automation"
       return 1
       ;;
   esac

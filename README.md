@@ -46,12 +46,12 @@ lwt checkout (co)  [query] [-e]
 lwt switch (s)     [query] [-e]
 lwt list (ls)
 lwt merge          [target-branch] [--keep-worktree] [--keep-branch] [--no-push]
-lwt remove (rm)    [query]
+lwt remove (rm)    [query] [-y|--yes] [-f|--force] [--delete-remote]
 lwt clean          [-n]
 lwt rename (rn)    <new-name>
 lwt config (cfg)   [show|get|set|unset] [--global|--local]
 lwt doctor
-lwt help           [command]
+lwt help           [command|automation]
 ```
 
 `--<agent-combo>` means any hyphenated mix of supported agents, for example `--claude-codex`, `--codex-gemini`, or `--claude-codex-gemini`. The combo shares a single prompt across all agents.
@@ -69,15 +69,29 @@ Examples:
 | `lwt a feat-auth --claude-codex "implement refresh token rotation"` | Use the shorter alias for the same two-agent flow |
 | `lwt a feat-auth --claude "implement refresh token rotation" --codex "investigate edge cases"` | Different prompts per agent; first runs here, second in split |
 | `lwt a`                                              | Create a worktree with a random branch name                         |
-| `lwt a existing-remote-branch`                       | Bring an existing local or remote branch under `lwt` management     |
+| `lwt a existing-remote-branch`                       | Bring an existing local or remote branch under `lwt` management without a confirmation prompt |
 | `lwt co restream`                                    | Pick an open PR matching `restream` and create its worktree         |
 | `lwt co auth -e`                                     | Pull an open PR into its own worktree and open it in your editor    |
 | `lwt s auth -e`                                      | Jump to a worktree and open it in your editor                       |
 | `lwt merge`                                          | Squash-merge the current worktree into the configured target branch |
-| `lwt rm feat-auth`                                   | Remove a worktree with a safety summary before anything is deleted  |
+| `lwt rm feat-auth --yes`                             | Remove a worktree without stopping for the delete confirmation      |
+| `lwt rm feat-auth --yes --force`                     | Also discard local changes and force local branch cleanup           |
 | `lwt clean -n`                                       | Preview merged worktrees before deleting anything                   |
 | `lwt rn new-api-name`                                | Rename the current worktree and branch together                     |
 | `lwt config set dev-cmd "pnpm --filter web dev"`     | Persist the repo's preferred dev command                            |
+
+## Agents And Automation
+
+If an agent or script is driving `lwt`, prefer explicit targets over picker flows:
+
+- `lwt add <branch>` is non-interactive, even when the branch already exists locally or on `origin`
+- `lwt remove <branch> --yes` skips the delete confirmation and bypasses `fzf` when the query exactly matches a branch, worktree path, or worktree directory name
+- `lwt remove <branch> --yes --force` also discards local changes and force-deletes the local branch when needed
+- `lwt remove <branch> --yes --delete-remote` also deletes the remote branch or closes the open PR without prompting
+
+Avoid bare `lwt rm`, `lwt switch`, and `lwt checkout` in automation unless you are intentionally running them in a real TTY, because those flows rely on `fzf`.
+
+`-yolo` and `lwt config set agent-mode yolo` only affect Claude/Codex/Gemini permissions. They do not bypass `lwt` command confirmations.
 
 ## Remote-Aware Status
 
@@ -313,7 +327,9 @@ This keeps your project root and sibling repos clean while making worktrees easy
 
 - Shows a safety summary first (merge status, dirty state, push state)
 - Uses `git worktree remove` as the primary path
-- Only forces removal after explicit confirmation
+- `--yes` skips the delete confirmation prompt for explicit automation
+- `--force` discards local changes if needed and force-deletes the local branch when it still has unmerged work
+- Remote branch and PR cleanup stay opt-in unless `--delete-remote` is passed
 - Offers local and remote branch cleanup after removal
 
 ## Bulk Cleanup

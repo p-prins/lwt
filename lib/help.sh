@@ -1,6 +1,14 @@
 lwt::ui::help_main() {
   echo "${_lwt_bold}Usage:${_lwt_reset} lwt <command> [options]"
   echo
+  lwt::ui::header "Automation"
+  echo "  ${_lwt_dim}Agents and scripts should prefer explicit branch/query arguments over picker flows.${_lwt_reset}"
+  echo "  ${_lwt_dim}lwt add checks out existing local or origin branches without a confirmation prompt.${_lwt_reset}"
+  echo "  lwt a feat-auth                              ${_lwt_dim}Create or re-use a named branch non-interactively${_lwt_reset}"
+  echo "  lwt rm feat-auth --yes                       ${_lwt_dim}Remove a worktree without the delete prompt${_lwt_reset}"
+  echo "  lwt rm feat-auth --yes --force               ${_lwt_dim}Also discard local changes and force local branch cleanup${_lwt_reset}"
+  echo "  lwt help automation                          ${_lwt_dim}See the agent-safe command patterns${_lwt_reset}"
+  echo
   lwt::ui::header "Commands"
   echo "  ${_lwt_bold}add, a${_lwt_reset}       ${_lwt_dim}Create or check out a worktree branch${_lwt_reset}"
   echo "  ${_lwt_bold}checkout, co${_lwt_reset} ${_lwt_dim}Pick an open PR and spawn a worktree${_lwt_reset}"
@@ -16,18 +24,19 @@ lwt::ui::help_main() {
   echo
   lwt::ui::header "Examples"
   echo "  lwt a my-feature                           ${_lwt_dim}Create a new worktree${_lwt_reset}"
-  echo "  lwt a my-feature -e                        ${_lwt_dim}Create and open in editor${_lwt_reset}"
-  echo "  lwt a my-feature -s                        ${_lwt_dim}Create and install dependencies${_lwt_reset}"
+  echo "  lwt a existing-branch                      ${_lwt_dim}Check out an existing branch without prompting${_lwt_reset}"
   echo "  lwt a my-feature --claude \"fix...\"         ${_lwt_dim}Create and launch an agent${_lwt_reset}"
   echo "  lwt a my-feature --claude \"fix\" --codex \"review\" ${_lwt_dim}First agent here, second in split${_lwt_reset}"
-  echo "  lwt a my-feature --claude-codex \"fix...\"   ${_lwt_dim}Launch multiple agents with one prompt${_lwt_reset}"
   echo "  lwt a my-feature -yolo --claude \"fix...\"   ${_lwt_dim}Launch agent with full auto-approve${_lwt_reset}"
+  echo "  lwt rm my-feature --yes                    ${_lwt_dim}Remove a worktree without an interactive prompt${_lwt_reset}"
+  echo "  lwt rm my-feature --yes --force            ${_lwt_dim}Also discard local changes if needed${_lwt_reset}"
+  echo "  lwt a my-feature -e                        ${_lwt_dim}Create and open in editor${_lwt_reset}"
+  echo "  lwt a my-feature -s                        ${_lwt_dim}Create and install dependencies${_lwt_reset}"
   echo "  lwt a my-feature -d                        ${_lwt_dim}Run the repo dev command in place${_lwt_reset}"
   echo "  lwt co                                     ${_lwt_dim}Pick an open PR and create its worktree${_lwt_reset}"
   echo "  lwt s                                      ${_lwt_dim}Switch worktree with fzf${_lwt_reset}"
   echo "  lwt ls                                     ${_lwt_dim}List all worktrees${_lwt_reset}"
-  echo "  lwt merge                                 ${_lwt_dim}Squash-merge the current worktree into the default branch${_lwt_reset}"
-  echo "  lwt rm                                     ${_lwt_dim}Pick and remove a worktree${_lwt_reset}"
+  echo "  lwt merge                                  ${_lwt_dim}Squash-merge the current worktree into the default branch${_lwt_reset}"
   echo "  lwt config show                            ${_lwt_dim}See effective settings and where they come from${_lwt_reset}"
   echo "  lwt config set dev-cmd \"pnpm dev\"         ${_lwt_dim}Persist the repo dev command${_lwt_reset}"
   echo
@@ -36,6 +45,25 @@ lwt::ui::help_main() {
   echo "  lwt config set agent-mode yolo              ${_lwt_dim}Auto-approve all agent actions${_lwt_reset}"
   echo "  lwt config set dev-cmd \"pnpm dev\"          ${_lwt_dim}Default command for --dev${_lwt_reset}"
   echo "  lwt config set terminal ghostty             ${_lwt_dim}Preferred terminal driver for splits/tabs${_lwt_reset}"
+}
+
+lwt::ui::help_automation() {
+  echo "${_lwt_bold}Usage:${_lwt_reset} lwt help automation"
+  echo
+  lwt::ui::header "Prefer Explicit Targets"
+  echo "  ${_lwt_dim}Use explicit branch/query args when calling lwt from agents or scripts.${_lwt_reset}"
+  echo "  ${_lwt_dim}lwt remove skips fzf when the query exactly matches a branch, worktree path, or worktree directory.${_lwt_reset}"
+  echo "  ${_lwt_dim}Bare lwt rm, lwt switch, and lwt checkout still open fzf pickers.${_lwt_reset}"
+  echo
+  lwt::ui::header "Non-Interactive Patterns"
+  echo "  lwt a feat-auth                            ${_lwt_dim}Create a worktree, or check out an existing branch, without confirmation${_lwt_reset}"
+  echo "  lwt rm feat-auth --yes                     ${_lwt_dim}Remove the worktree without the delete prompt${_lwt_reset}"
+  echo "  lwt rm feat-auth --yes --force             ${_lwt_dim}Also discard local changes and force local branch cleanup${_lwt_reset}"
+  echo "  lwt rm feat-auth --yes --delete-remote     ${_lwt_dim}Also delete the remote branch or close the open PR${_lwt_reset}"
+  echo
+  lwt::ui::header "Agent Notes"
+  echo "  ${_lwt_dim}-yolo and agent-mode yolo control Claude/Codex/Gemini permissions, not lwt confirmations.${_lwt_reset}"
+  echo "  ${_lwt_dim}If you need picker-based flows, run lwt in a real TTY.${_lwt_reset}"
 }
 
 lwt::ui::help_add() {
@@ -58,6 +86,7 @@ lwt::ui::help_add() {
   lwt::ui::header "Notes"
   echo "  ${_lwt_dim}If branch is omitted, lwt generates a random branch name.${_lwt_reset}"
   echo "  ${_lwt_dim}New branches are created from the resolved default branch.${_lwt_reset}"
+  echo "  ${_lwt_dim}Existing local or origin branches are checked out without prompting.${_lwt_reset}"
   echo "  ${_lwt_dim}First agent runs in your shell; additional agents open in splits automatically.${_lwt_reset}"
   echo "  ${_lwt_dim}Each agent flag takes its own prompt: --claude \"fix auth\" --codex \"review tests\"${_lwt_reset}"
   echo "  ${_lwt_dim}Hyphen aliases like --claude-codex share one prompt across all agents in the alias.${_lwt_reset}"
@@ -118,10 +147,19 @@ lwt::ui::help_merge() {
 }
 
 lwt::ui::help_remove() {
-  echo "${_lwt_bold}Usage:${_lwt_reset} lwt remove [query]"
+  echo "${_lwt_bold}Usage:${_lwt_reset} lwt remove [query] [options]"
   echo
+  lwt::ui::header "Options"
+  echo "  ${_lwt_bold}-y, --yes${_lwt_reset}             ${_lwt_dim}Skip the delete confirmation prompt${_lwt_reset}"
+  echo "  ${_lwt_bold}-f, --force${_lwt_reset}           ${_lwt_dim}Discard local changes if needed and force local branch cleanup${_lwt_reset}"
+  echo "  ${_lwt_bold}--delete-remote${_lwt_reset}       ${_lwt_dim}Delete the remote branch, or close its open PR, without prompting${_lwt_reset}"
+  echo "  ${_lwt_bold}-h, --help${_lwt_reset}            ${_lwt_dim}Show help${_lwt_reset}"
+  echo
+  lwt::ui::header "Notes"
   echo "  ${_lwt_dim}If called inside a linked worktree, that worktree is selected automatically.${_lwt_reset}"
-  echo "  ${_lwt_dim}Otherwise an fzf picker is shown.${_lwt_reset}"
+  echo "  ${_lwt_dim}An exact branch/path/directory query removes directly; otherwise an fzf picker is shown.${_lwt_reset}"
+  echo "  ${_lwt_dim}Use --yes for agents and scripts. Add --force when dirty worktrees should be discarded too.${_lwt_reset}"
+  echo "  ${_lwt_dim}Without --delete-remote, non-interactive removal keeps remote branches and open PRs by default.${_lwt_reset}"
 }
 
 lwt::ui::help_clean() {

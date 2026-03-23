@@ -1,11 +1,21 @@
 # Colors
-_lwt_red=$'\033[1;31m'
-_lwt_green=$'\033[32m'
-_lwt_yellow=$'\033[33m'
-_lwt_orange=$'\033[38;5;208m'
-_lwt_dim=$'\033[2m'
-_lwt_bold=$'\033[1m'
-_lwt_reset=$'\033[0m'
+if [[ -n "${NO_COLOR:-}" || ! -t 1 || ! -t 2 ]]; then
+  _lwt_red=""
+  _lwt_green=""
+  _lwt_yellow=""
+  _lwt_orange=""
+  _lwt_dim=""
+  _lwt_bold=""
+  _lwt_reset=""
+else
+  _lwt_red=$'\033[1;31m'
+  _lwt_green=$'\033[32m'
+  _lwt_yellow=$'\033[33m'
+  _lwt_orange=$'\033[38;5;208m'
+  _lwt_dim=$'\033[2m'
+  _lwt_bold=$'\033[1m'
+  _lwt_reset=$'\033[0m'
+fi
 
 typeset -g LWT_DEFAULT_BRANCH=""
 typeset -g LWT_DEFAULT_BASE_REF=""
@@ -41,6 +51,31 @@ lwt::ui::success() {
 lwt::ui::step() {
   echo "${_lwt_dim}› $*${_lwt_reset}"
 }
+
+lwt::ui::confirm() {
+  local prompt="$1"
+  local assume_yes="${2:-false}"
+  local noninteractive_hint="${3:-}"
+
+  if [[ "$assume_yes" == "true" ]]; then
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    lwt::ui::error "Confirmation required for this command."
+    [[ -n "$noninteractive_hint" ]] && lwt::ui::hint "$noninteractive_hint"
+    return 2
+  fi
+
+  if read -rq "?$prompt "; then
+    echo
+    return 0
+  fi
+
+  echo
+  return 1
+}
+
 lwt::utils::random_branch_name() {
   local -a adjectives=(
     swift calm bold warm cool keen slim fast bright sharp

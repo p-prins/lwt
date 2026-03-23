@@ -17,13 +17,13 @@
 #   lwt switch [query] [-e] [--editor-cmd "cmd"]
 #   lwt list
 #   lwt merge [target-branch] [--keep-worktree] [--keep-branch] [--no-push]
-#   lwt remove [query]
+#   lwt remove [query] [-y|--yes] [-f|--force] [--delete-remote]
 #   lwt clean [-n]
 #   lwt rename <new-name>
 #   lwt config [show|get|set|unset] [--global|--local]
 #   lwt hook [list|path|run] [event]
 #   lwt doctor
-#   lwt help [command]
+#   lwt help [command|automation]
 
 if [[ -n "${ZSH_VERSION:-}" ]]; then
   typeset -g LWT_ROOT="${${(%):-%N}:A:h}"

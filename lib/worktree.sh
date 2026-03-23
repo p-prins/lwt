@@ -60,6 +60,43 @@ lwt::worktree::path_for_branch() {
   return 1
 }
 
+lwt::worktree::resolve_query() {
+  local query="$1"
+  local exclude_main="${2:-false}"
+  local main_wt=""
+  local record wt_path branch wt_name
+  local -a matches=()
+
+  [[ -z "$query" ]] && return 1
+
+  if [[ "$exclude_main" == "true" ]]; then
+    main_wt=$(lwt::worktree::main_path 2>/dev/null)
+  fi
+
+  while IFS= read -r record; do
+    wt_path="${record%%$'\t'*}"
+    branch="${record#*$'\t'}"
+    wt_name="$(basename "$wt_path")"
+
+    [[ "$exclude_main" == "true" && "$wt_path" == "$main_wt" ]] && continue
+
+    if [[ "$query" == "$branch" || "$query" == "$wt_path" || "$query" == "$wt_name" ]]; then
+      matches+=("$wt_path")
+    fi
+  done < <(lwt::worktree::records)
+
+  if (( ${#matches[@]} == 1 )); then
+    printf '%s\n' "${matches[1]}"
+    return 0
+  fi
+
+  if (( ${#matches[@]} > 1 )); then
+    return 2
+  fi
+
+  return 1
+}
+
 lwt::worktree::create_branch() {
   local branch="$1"
   local confirm_existing="${2:-true}"
