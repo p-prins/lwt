@@ -54,8 +54,8 @@ lwt::ui::help_automation() {
   echo
   lwt::ui::header "Prefer Explicit Targets"
   echo "  ${_lwt_dim}Use explicit branch/query args when calling lwt from agents or scripts.${_lwt_reset}"
-  echo "  ${_lwt_dim}lwt remove skips fzf when the query exactly matches a branch, worktree path, or worktree directory.${_lwt_reset}"
-  echo "  ${_lwt_dim}Bare lwt rm, lwt switch, and lwt checkout still open fzf pickers.${_lwt_reset}"
+  echo "  ${_lwt_dim}lwt remove and lwt switch skip fzf when the query exactly matches a branch, worktree path, or worktree directory.${_lwt_reset}"
+  echo "  ${_lwt_dim}Bare lwt rm, fuzzy lwt switch, and lwt checkout still open fzf pickers.${_lwt_reset}"
   echo
   lwt::ui::header "Non-Interactive Patterns"
   echo "  lwt a feat-auth                            ${_lwt_dim}Create a worktree, or check out an existing branch, without confirmation${_lwt_reset}"

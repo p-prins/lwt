@@ -164,6 +164,7 @@ lwt::cmd::switch() {
   local query=""
   local open_editor=false
   local editor_override=""
+  local dir=""
 
   while (( $# > 0 )); do
     case "$1" in
@@ -197,16 +198,42 @@ lwt::cmd::switch() {
     shift
   done
 
-  if ! lwt::deps::has fzf; then
-    lwt::ui::error "fzf is required for lwt switch. Install with: brew install fzf"
-    return 1
-  fi
-
   lwt::status::warn_gh_limitations
 
-  local dir
-  dir=$(lwt::worktree::display_rows | fzf --ansi --height 40% --reverse --select-1 \
-    --query="$query" --delimiter='\t' --with-nth=2.. | awk -F'\t' '{print $1}')
+  if [[ -n "$query" ]]; then
+    dir=$(lwt::worktree::resolve_query "$query" 2>/dev/null)
+    local resolve_exit=$?
+    case "$resolve_exit" in
+      0)
+        ;;
+      1)
+        dir=""
+        if [[ ! -t 0 ]]; then
+          lwt::ui::error "No exact worktree matched: $query"
+          lwt::ui::hint "Pass an exact branch name or worktree path, or run lwt switch interactively."
+          return 1
+        fi
+        ;;
+      2)
+        lwt::ui::error "Query matched multiple worktrees: $query"
+        lwt::ui::hint "Pass an exact branch name or worktree path."
+        return 1
+        ;;
+      *)
+        return "$resolve_exit"
+        ;;
+    esac
+  fi
+
+  if [[ -z "$dir" ]]; then
+    if ! lwt::deps::has fzf; then
+      lwt::ui::error "fzf is required for lwt switch. Install with: brew install fzf"
+      return 1
+    fi
+
+    dir=$(lwt::worktree::display_rows | fzf --ansi --height 40% --reverse --select-1 \
+      --query="$query" --delimiter='\t' --with-nth=2.. | awk -F'\t' '{print $1}')
+  fi
 
   [[ -z "$dir" ]] && return 0
 
